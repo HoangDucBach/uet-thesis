@@ -2,164 +2,283 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine
-    container_name: sui_postgres
+    image: postgres:15
+    container_name: blockchain_postgres
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      - ./envs/postgres.env
     ports:
       - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./configs/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./backups/postgres:/backups
     networks:
-      - sui_network
+      - blockchain_monitor
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
-  elasticsearch:
+  es-master:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
-    container_name: sui_elasticsearch
+    container_name: blockchain_es_master
     restart: unless-stopped
     env_file:
       - .env
+      - ./envs/elasticsearch.env
     environment:
-      - node.name=es-single
+      - node.name=es-master
+      - node.roles=master
       - cluster.name=${ES_CLUSTER_NAME}
-      - discovery.type=single-node
+      - discovery.seed_hosts=es-data-1,es-data-2
+      - cluster.initial_master_nodes=es-master
       - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=${ES_JAVA_OPTS}"
+      - "ES_JAVA_OPTS=${ES_MASTER_JAVA_OPTS}"
       - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
-      - xpack.security.transport.ssl.enabled=false
-      - xpack.security.http.ssl.enabled=false
     ulimits:
       memlock:
         soft: -1
         hard: -1
+    volumes:
+      - elasticsearch_master_data:/usr/share/elasticsearch/data
+      - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - ./logs/elasticsearch:/usr/share/elasticsearch/logs
+    networks:
+      - blockchain_monitor
+    deploy:
+      resources:
+        limits:
+          cpus: '${ES_MASTER_CPU_LIMIT}'
+          memory: ${ES_MASTER_MEMORY_LIMIT}
+        reservations:
+          cpus: '${ES_MASTER_CPU_RESERVATION}'
+          memory: ${ES_MASTER_MEMORY_RESERVATION}
+
+  es-data-1:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
+    container_name: blockchain_es_data1
+    restart: unless-stopped
+    env_file:
+      - .env
+      - ./envs/elasticsearch.env
+    environment:
+      - node.name=es-data-1
+      - node.roles=data,ingest
+      - cluster.name=${ES_CLUSTER_NAME}
+      - discovery.seed_hosts=es-master,es-data-2
+      - cluster.initial_master_nodes=es-master
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
+      - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data1:/usr/share/elasticsearch/data
+      - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - ./logs/elasticsearch:/usr/share/elasticsearch/logs
+    networks:
+      - blockchain_monitor
+    depends_on:
+      - es-master
+    deploy:
+      resources:
+        limits:
+          cpus: '${ES_DATA_CPU_LIMIT}'
+          memory: ${ES_DATA_MEMORY_LIMIT}
+        reservations:
+          cpus: '${ES_DATA_CPU_RESERVATION}'
+          memory: ${ES_DATA_MEMORY_RESERVATION}
+
+  es-data-2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
+    container_name: blockchain_es_data2
+    restart: unless-stopped
+    env_file:
+      - .env
+      - ./envs/elasticsearch.env
+    environment:
+      - node.name=es-data-2
+      - node.roles=data,ingest
+      - cluster.name=${ES_CLUSTER_NAME}
+      - discovery.seed_hosts=es-master,es-data-1
+      - cluster.initial_master_nodes=es-master
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
+      - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data2:/usr/share/elasticsearch/data
+      - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - ./logs/elasticsearch:/usr/share/elasticsearch/logs
+    networks:
+      - blockchain_monitor
+    depends_on:
+      - es-master
+    deploy:
+      resources:
+        limits:
+          cpus: '${ES_DATA_CPU_LIMIT}'
+          memory: ${ES_DATA_MEMORY_LIMIT}
+        reservations:
+          cpus: '${ES_DATA_CPU_RESERVATION}'
+          memory: ${ES_DATA_MEMORY_RESERVATION}
+
+  es-lb:
+    image: nginx:alpine
+    container_name: blockchain_es_lb
+    restart: unless-stopped
     ports:
       - "${ES_PORT}:9200"
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-      - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+      - ./configs/nginx/es-lb.conf:/etc/nginx/nginx.conf:ro
+      - ./logs/nginx:/var/log/nginx
     networks:
-      - sui_network
+      - blockchain_monitor
+    depends_on:
+      - es-master
+      - es-data-1
+      - es-data-2
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9200/_cluster/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
 
   kibana:
     image: docker.elastic.co/kibana/kibana:${ES_VERSION}
-    container_name: sui_kibana
+    container_name: blockchain_kibana
     restart: unless-stopped
     env_file:
       - .env
+      - ./envs/kibana.env
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=${ELASTIC_USERNAME}
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_USERNAME=${KIBANA_USERNAME}
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=${KIBANA_PORT}
-      - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
+      - xpack.security.enabled=${KIBANA_XPACK_SECURITY_ENABLED}
     ports:
       - "${KIBANA_PORT}:5601"
     volumes:
-      - kibana_data:/usr/share/kibana/data
       - ./configs/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+      - kibana_data:/usr/share/kibana/data
+      - ./logs/kibana:/usr/share/kibana/logs
     networks:
-      - sui_network
+      - blockchain_monitor
     depends_on:
-      - elasticsearch
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      - es-lb
+    deploy:
+      resources:
+        limits:
+          cpus: '${KIBANA_CPU_LIMIT}'
+          memory: ${KIBANA_MEMORY_LIMIT}
+        reservations:
+          cpus: '${KIBANA_CPU_RESERVATION}'
+          memory: ${KIBANA_MEMORY_RESERVATION}
 
   redis:
     image: redis:7-alpine
-    container_name: sui_redis
+    container_name: blockchain_redis
     restart: unless-stopped
     env_file:
       - .env
+      - ./envs/redis.env
     command: redis-server /etc/redis/redis.conf
     ports:
       - "${REDIS_PORT}:6379"
     volumes:
       - redis_data:/data
       - ./configs/redis/redis.conf:/etc/redis/redis.conf:ro
+      - ./logs/redis:/var/log/redis
     networks:
-      - sui_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - blockchain_monitor
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEMORY_LIMIT}
+        reservations:
+          memory: ${REDIS_MEMORY_RESERVATION}
 
   nginx:
     image: nginx:alpine
-    container_name: sui_nginx
+    container_name: blockchain_nginx
     restart: unless-stopped
-    env_file:
-      - .env
     ports:
       - "${NGINX_HTTP_PORT}:80"
     volumes:
       - ./configs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./logs/nginx:/var/log/nginx
     networks:
-      - sui_network
+      - blockchain_monitor
     depends_on:
-      - elasticsearch
+      - es-lb
       - kibana
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: sui_prometheus
+    container_name: blockchain_prometheus
     restart: unless-stopped
-    env_file:
-      - .env
     ports:
       - "${PROMETHEUS_PORT}:9090"
     volumes:
       - prometheus_data:/prometheus
       - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
-      - sui_network
+      - blockchain_monitor
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:${ES_VERSION}
+    container_name: blockchain_filebeat
+    restart: unless-stopped
+    user: root
+    volumes:
+      - ./configs/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./logs:/var/log/app:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - blockchain_monitor
+    depends_on:
+      - es-lb
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
 networks:
-  sui_network:
+  blockchain_monitor:
     driver: bridge
-    name: sui_network
+    name: blockchain_monitor_network
 
 volumes:
   postgres_data:
-    name: sui_postgres_data
-  elasticsearch_data:
-    name: sui_elasticsearch_data
+    name: blockchain_postgres_data
+  elasticsearch_master_data:
+    name: blockchain_es_master_data
+  elasticsearch_data1:
+    name: blockchain_es_data1
+  elasticsearch_data2:
+    name: blockchain_es_data2
   kibana_data:
-    name: sui_kibana_data
+    name: blockchain_kibana_data
   redis_data:
-    name: sui_redis_data
+    name: blockchain_redis_data
   prometheus_data:
-    name: sui_prometheus_data
+    name: blockchain_prometheus_data

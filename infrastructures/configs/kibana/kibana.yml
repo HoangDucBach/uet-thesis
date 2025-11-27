@@ -1,13 +1,11 @@
 server.name: kibana
 server.host: 0.0.0.0
-server.port: ${KIBANA_PORT}                      # From env var
+server.port: ${KIBANA_PORT}
 
-# Connection (from env)
 elasticsearch.hosts: ["${ELASTICSEARCH_URL}"]
 elasticsearch.username: ${KIBANA_USERNAME}
 elasticsearch.password: ${KIBANA_PASSWORD}
 
-# Static application configs
 monitoring.ui.container.elasticsearch.enabled: true
 server.maxPayload: 1048576
 elasticsearch.requestTimeout: 30000
