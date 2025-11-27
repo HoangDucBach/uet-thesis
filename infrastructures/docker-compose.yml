@@ -7,7 +7,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./envs/postgres.env
     ports:
       - "${POSTGRES_PORT}:5432"
     volumes:
@@ -29,7 +28,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./envs/elasticsearch.env
     environment:
       - node.name=es-master
       - node.roles=master
@@ -64,7 +62,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./envs/elasticsearch.env
     environment:
       - node.name=es-data-1
       - node.roles=data,ingest
@@ -101,7 +98,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./envs/elasticsearch.env
     environment:
       - node.name=es-data-2
       - node.roles=data,ingest
@@ -159,7 +155,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./envs/kibana.env
     environment:
       - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
       - ELASTICSEARCH_USERNAME=${KIBANA_USERNAME}
@@ -192,7 +187,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      - ./envs/redis.env
     command: redis-server /etc/redis/redis.conf
     ports:
       - "${REDIS_PORT}:6379"
