@@ -5,11 +5,12 @@ use sui_indexer_alt_framework::pipeline::Processor;
 use sui_types::full_checkpoint_content::Checkpoint;
 use sui_types::effects::TransactionEffectsAPI;
 use sui_types::transaction::TransactionDataAPI;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::models::{StoredTransactionDigest, Transaction, JsonbValue};
 use crate::schema::transaction_digests::dsl::transaction_digests;
 use crate::schema::transactions::dsl::transactions;
+use crate::elasticsearch::SharedEsClient;
 use diesel_async::RunQueryDsl;
 use sui_indexer_alt_framework::{
     postgres::{Connection, Db},
@@ -60,7 +61,15 @@ impl Handler for TransactionDigestHandler {
     }
 }
 
-pub struct TransactionHandler;
+pub struct TransactionHandler {
+    es_client: SharedEsClient,
+}
+
+impl TransactionHandler {
+    pub fn new(es_client: SharedEsClient) -> Self {
+        Self { es_client }
+    }
+}
 
 #[async_trait]
 impl Processor for TransactionHandler {
@@ -131,12 +140,53 @@ impl Handler for TransactionHandler {
     ) -> Result<usize> {
         use crate::schema::transactions::dsl::tx_digest;
 
+        // Insert into PostgreSQL
         let inserted = diesel::insert_into(transactions)
             .values(batch)
             .on_conflict(tx_digest)
             .do_nothing()
             .execute(conn)
             .await?;
+
+        // Index into Elasticsearch (async, best effort)
+        if !batch.is_empty() {
+            let es_docs: Vec<Value> = batch.iter().map(|tx| {
+                let mut doc = json!({
+                    "tx_digest": tx.tx_digest,
+                    "checkpoint_sequence_number": tx.checkpoint_sequence_number,
+                    "execution_status": tx.execution_status,
+                });
+
+                if let Some(ref sender) = tx.sender {
+                    doc["sender"] = json!(sender);
+                }
+                if let Some(gas_budget) = tx.gas_budget {
+                    doc["gas_budget"] = json!(gas_budget);
+                }
+                if let Some(gas_used) = tx.gas_used {
+                    doc["gas_used"] = json!(gas_used);
+                }
+                if let Some(timestamp_ms) = tx.timestamp_ms {
+                    doc["timestamp_ms"] = json!(timestamp_ms);
+                }
+                if let Some(ref tx_data) = tx.transaction_data {
+                    doc["transaction_data"] = tx_data.0.clone();
+                }
+
+                doc
+            }).collect();
+
+            // Bulk index to ES (don't fail if ES is down)
+            match self.es_client.bulk_index_transactions(&es_docs).await {
+                Ok(count) => {
+                    println!("Indexed {} transactions to Elasticsearch", count);
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to index to Elasticsearch: {}", e);
+                }
+            }
+        }
+
         Ok(inserted)
     }
 }

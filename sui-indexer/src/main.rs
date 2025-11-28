@@ -1,12 +1,15 @@
 mod models;
 mod handlers;
+mod elasticsearch;
 pub mod schema;
 
 use handlers::{TransactionDigestHandler, TransactionHandler};
+use elasticsearch::EsClient;
 
 use anyhow::Result;
 use clap::Parser;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+use std::sync::Arc;
 use sui_indexer_alt_framework::{
     cluster::{Args, IndexerCluster},
     pipeline::sequential::SequentialConfig,
@@ -25,6 +28,18 @@ async fn main() -> Result<()> {
         .parse::<Url>()
         .expect("Invalid database URL");
 
+    // Initialize Elasticsearch client
+    let es_url = std::env::var("ELASTICSEARCH_URL")
+        .unwrap_or_else(|_| "http://localhost:9200".to_string());
+    let es_index = std::env::var("ELASTICSEARCH_INDEX")
+        .unwrap_or_else(|_| "sui-transactions".to_string());
+
+    let es_client = Arc::new(EsClient::new(&es_url, &es_index)?);
+
+    // Ensure index exists with proper mappings
+    es_client.ensure_index().await?;
+    println!("Elasticsearch client initialized: {} -> {}", es_url, es_index);
+
     let args = Args::parse();
 
     let mut cluster = IndexerCluster::builder()
@@ -40,7 +55,7 @@ async fn main() -> Result<()> {
     ).await?;
 
     cluster.sequential_pipeline(
-        TransactionHandler,
+        TransactionHandler::new(es_client),
         SequentialConfig::default(),
     ).await?;
 
