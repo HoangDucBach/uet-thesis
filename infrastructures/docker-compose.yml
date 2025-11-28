@@ -74,7 +74,7 @@ services:
         soft: -1
         hard: -1
     volumes:
-      - elasticsearch_data1:/usr/share/elasticsearch/data
+      - elasticsearch_data_1:/usr/share/elasticsearch/data
       - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
       - ./logs/elasticsearch:/usr/share/elasticsearch/logs
     networks:
@@ -110,7 +110,7 @@ services:
         soft: -1
         hard: -1
     volumes:
-      - elasticsearch_data2:/usr/share/elasticsearch/data
+      - elasticsearch_data_2:/usr/share/elasticsearch/data
       - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
       - ./logs/elasticsearch:/usr/share/elasticsearch/logs
     networks:
@@ -240,9 +240,9 @@ volumes:
     name: blockchain_postgres_data
   elasticsearch_master_data:
     name: blockchain_es_master_data
-  elasticsearch_data1:
-    name: blockchain_es_data1
-  elasticsearch_data2:
-    name: blockchain_es_data2
+  elasticsearch_data_1:
+    name: blockchain_es_data_1
+  elasticsearch_data_2:
+    name: blockchain_es_data_2
   redis_data:
     name: blockchain_redis_data
