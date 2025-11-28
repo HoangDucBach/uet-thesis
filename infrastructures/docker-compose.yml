@@ -171,6 +171,67 @@ services:
         reservations:
           memory: ${REDIS_MEMORY_RESERVATION}
 
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${ES_VERSION}
+    container_name: blockchain_kibana
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVER_NAME=kibana
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
+      - ELASTICSEARCH_USERNAME=${KIBANA_USERNAME}
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - MONITORING_ENABLED=${KIBANA_MONITORING_ENABLED}
+      - XPACK_SECURITY_ENABLED=${KIBANA_XPACK_SECURITY_ENABLED}
+    ports:
+      - "${KIBANA_PORT}:5601"
+    volumes:
+      - ./configs/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+      - ./logs/kibana:/usr/share/kibana/logs
+    networks:
+      - blockchain_monitor
+    depends_on:
+      - es-lb
+    deploy:
+      resources:
+        limits:
+          cpus: '${KIBANA_CPU_LIMIT}'
+          memory: ${KIBANA_MEMORY_LIMIT}
+        reservations:
+          cpus: '${KIBANA_CPU_RESERVATION}'
+          memory: ${KIBANA_MEMORY_RESERVATION}
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:${LOGSTASH_VERSION}
+    container_name: blockchain_logstash
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
+      - LS_JAVA_OPTS=${LOGSTASH_JAVA_OPTS}
+    ports:
+      - "${LOGSTASH_PORT}:5044"
+      - "9600:9600"
+    volumes:
+      - ./configs/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./configs/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      - ./configs/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logs/logstash:/usr/share/logstash/logs
+    networks:
+      - blockchain_monitor
+    depends_on:
+      - es-lb
+    deploy:
+      resources:
+        limits:
+          cpus: '${LOGSTASH_CPU_LIMIT}'
+          memory: ${LOGSTASH_MEMORY_LIMIT}
+        reservations:
+          cpus: '${LOGSTASH_CPU_RESERVATION}'
+          memory: ${LOGSTASH_MEMORY_RESERVATION}
+
 networks:
   blockchain_monitor:
     driver: bridge

@@ -30,6 +30,21 @@ Elasticsearch cluster:
 curl http://localhost:9200/_cluster/health
 ```
 
+Redis:
+```bash
+docker exec blockchain_redis redis-cli -a Admin2025@ ping
+```
+
+Kibana (wait 1-2 minutes for startup):
+```bash
+curl -I http://localhost:5601/api/status
+```
+
+Logstash:
+```bash
+curl http://localhost:9600/_node/stats
+```
+
 ## Step 3: Build Sui Indexer
 
 ```bash
@@ -57,14 +72,14 @@ docker exec -it blockchain_postgres psql -U postgres -d sui_indexer -c "SELECT t
 
 ## Step 6: Monitor
 
-Prometheus metrics:
-```bash
-open http://localhost:9090
-```
-
-Kibana dashboard:
+Kibana dashboard (Elasticsearch data visualization):
 ```bash
 open http://localhost:5601
+```
+
+Logstash monitoring:
+```bash
+curl http://localhost:9600/_node/stats | jq
 ```
 
 PostgreSQL queries:

@@ -8,9 +8,10 @@
   - es-data-2
   - es-lb (load balancer)
 - Redis
+- Kibana (visualization & monitoring)
+- Logstash (log processing & aggregation)
 
 ## Disabled (for performance)
-- Kibana
 - Prometheus
 - Nginx reverse proxy
 - Filebeat
@@ -27,9 +28,20 @@ docker compose up -d
 ```bash
 docker compose ps
 
+# PostgreSQL
 docker exec blockchain_postgres pg_isready -U postgres
+
+# Elasticsearch cluster
 curl http://localhost:9200/_cluster/health
+
+# Redis
 docker exec blockchain_redis redis-cli -a Admin2025@ ping
+
+# Kibana (wait for it to be ready, may take 1-2 minutes)
+curl -I http://localhost:5601/api/status
+
+# Logstash
+curl http://localhost:9600/_node/stats
 ```
 
 ## Run Indexer
