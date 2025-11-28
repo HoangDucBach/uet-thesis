@@ -32,7 +32,7 @@ services:
       - node.name=es-master
       - node.roles=master
       - cluster.name=${ES_CLUSTER_NAME}
-      - discovery.seed_hosts=es-data-1,es-data-2
+      - discovery.seed_hosts=es-data-1
       - cluster.initial_master_nodes=es-master
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=${ES_MASTER_JAVA_OPTS}"
@@ -66,7 +66,7 @@ services:
       - node.name=es-data-1
       - node.roles=data,ingest
       - cluster.name=${ES_CLUSTER_NAME}
-      - discovery.seed_hosts=es-master,es-data-2
+      - discovery.seed_hosts=es-master
       - cluster.initial_master_nodes=es-master
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
@@ -92,41 +92,42 @@ services:
           cpus: '${ES_DATA_CPU_RESERVATION}'
           memory: ${ES_DATA_MEMORY_RESERVATION}
 
-  es-data-2:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
-    container_name: blockchain_es_data_2
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - node.name=es-data-2
-      - node.roles=data,ingest
-      - cluster.name=${ES_CLUSTER_NAME}
-      - discovery.seed_hosts=es-master,es-data-1
-      - cluster.initial_master_nodes=es-master
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
-      - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - elasticsearch_data2:/usr/share/elasticsearch/data
-      - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
-      - ./logs/elasticsearch:/usr/share/elasticsearch/logs
-    networks:
-      - blockchain_monitor
-    depends_on:
-      - es-master
-    deploy:
-      resources:
-        limits:
-          cpus: '${ES_DATA_CPU_LIMIT}'
-          memory: ${ES_DATA_MEMORY_LIMIT}
-        reservations:
-          cpus: '${ES_DATA_CPU_RESERVATION}'
-          memory: ${ES_DATA_MEMORY_RESERVATION}
+  # es-data-2: DISABLED for 3GB RAM environment
+  # es-data-2:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
+  #   container_name: blockchain_es_data_2
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - node.name=es-data-2
+  #     - node.roles=data,ingest
+  #     - cluster.name=${ES_CLUSTER_NAME}
+  #     - discovery.seed_hosts=es-master,es-data-1
+  #     - cluster.initial_master_nodes=es-master
+  #     - bootstrap.memory_lock=true
+  #     - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
+  #     - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   volumes:
+  #     - elasticsearch_data2:/usr/share/elasticsearch/data
+  #     - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+  #     - ./logs/elasticsearch:/usr/share/elasticsearch/logs
+  #   networks:
+  #     - blockchain_monitor
+  #   depends_on:
+  #     - es-master
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '${ES_DATA_CPU_LIMIT}'
+  #         memory: ${ES_DATA_MEMORY_LIMIT}
+  #       reservations:
+  #         cpus: '${ES_DATA_CPU_RESERVATION}'
+  #         memory: ${ES_DATA_MEMORY_RESERVATION}
 
   es-lb:
     image: nginx:alpine
@@ -142,7 +143,7 @@ services:
     depends_on:
       - es-master
       - es-data-1
-      - es-data-2
+      # - es-data-2  # DISABLED
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9200/_cluster/health"]
       interval: 30s
@@ -171,66 +172,68 @@ services:
         reservations:
           memory: ${REDIS_MEMORY_RESERVATION}
 
-  kibana:
-    image: docker.elastic.co/kibana/kibana:${ES_VERSION}
-    container_name: blockchain_kibana
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - SERVER_NAME=kibana
-      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
-      - ELASTICSEARCH_USERNAME=${KIBANA_USERNAME}
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
-      - MONITORING_ENABLED=${KIBANA_MONITORING_ENABLED}
-      - XPACK_SECURITY_ENABLED=${KIBANA_XPACK_SECURITY_ENABLED}
-    ports:
-      - "${KIBANA_PORT}:5601"
-    volumes:
-      - ./configs/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
-      - ./logs/kibana:/usr/share/kibana/logs
-    networks:
-      - blockchain_monitor
-    depends_on:
-      - es-lb
-    deploy:
-      resources:
-        limits:
-          cpus: '${KIBANA_CPU_LIMIT}'
-          memory: ${KIBANA_MEMORY_LIMIT}
-        reservations:
-          cpus: '${KIBANA_CPU_RESERVATION}'
-          memory: ${KIBANA_MEMORY_RESERVATION}
+  # kibana: DISABLED for 3GB RAM environment (uncomment when needed)
+  # kibana:
+  #   image: docker.elastic.co/kibana/kibana:${ES_VERSION}
+  #   container_name: blockchain_kibana
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - SERVER_NAME=kibana
+  #     - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
+  #     - ELASTICSEARCH_USERNAME=${KIBANA_USERNAME}
+  #     - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+  #     - MONITORING_ENABLED=${KIBANA_MONITORING_ENABLED}
+  #     - XPACK_SECURITY_ENABLED=${KIBANA_XPACK_SECURITY_ENABLED}
+  #   ports:
+  #     - "${KIBANA_PORT}:5601"
+  #   volumes:
+  #     - ./configs/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+  #     - ./logs/kibana:/usr/share/kibana/logs
+  #   networks:
+  #     - blockchain_monitor
+  #   depends_on:
+  #     - es-lb
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '${KIBANA_CPU_LIMIT}'
+  #         memory: ${KIBANA_MEMORY_LIMIT}
+  #       reservations:
+  #         cpus: '${KIBANA_CPU_RESERVATION}'
+  #         memory: ${KIBANA_MEMORY_RESERVATION}
 
-  logstash:
-    image: docker.elastic.co/logstash/logstash:${LOGSTASH_VERSION}
-    container_name: blockchain_logstash
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
-      - LS_JAVA_OPTS=${LOGSTASH_JAVA_OPTS}
-    ports:
-      - "${LOGSTASH_PORT}:5044"
-      - "9600:9600"
-    volumes:
-      - ./configs/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
-      - ./configs/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
-      - ./configs/logstash/pipeline:/usr/share/logstash/pipeline:ro
-      - ./logs/logstash:/usr/share/logstash/logs
-    networks:
-      - blockchain_monitor
-    depends_on:
-      - es-lb
-    deploy:
-      resources:
-        limits:
-          cpus: '${LOGSTASH_CPU_LIMIT}'
-          memory: ${LOGSTASH_MEMORY_LIMIT}
-        reservations:
-          cpus: '${LOGSTASH_CPU_RESERVATION}'
-          memory: ${LOGSTASH_MEMORY_RESERVATION}
+  # logstash: DISABLED for 3GB RAM environment (uncomment when needed)
+  # logstash:
+  #   image: docker.elastic.co/logstash/logstash:${LOGSTASH_VERSION}
+  #   container_name: blockchain_logstash
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
+  #     - LS_JAVA_OPTS=${LOGSTASH_JAVA_OPTS}
+  #   ports:
+  #     - "${LOGSTASH_PORT}:5044"
+  #     - "9600:9600"
+  #   volumes:
+  #     - ./configs/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+  #     - ./configs/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+  #     - ./configs/logstash/pipeline:/usr/share/logstash/pipeline:ro
+  #     - ./logs/logstash:/usr/share/logstash/logs
+  #   networks:
+  #     - blockchain_monitor
+  #   depends_on:
+  #     - es-lb
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '${LOGSTASH_CPU_LIMIT}'
+  #         memory: ${LOGSTASH_MEMORY_LIMIT}
+  #       reservations:
+  #         cpus: '${LOGSTASH_CPU_RESERVATION}'
+  #         memory: ${LOGSTASH_MEMORY_RESERVATION}
 
 networks:
   blockchain_monitor:
