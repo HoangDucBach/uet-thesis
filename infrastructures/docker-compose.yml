@@ -58,7 +58,7 @@ services:
 
   es-data-1:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
-    container_name: blockchain_es_data1
+    container_name: blockchain_es_data_1
     restart: unless-stopped
     env_file:
       - .env
@@ -94,7 +94,7 @@ services:
 
   es-data-2:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
-    container_name: blockchain_es_data2
+    container_name: blockchain_es_data_2
     restart: unless-stopped
     env_file:
       - .env
