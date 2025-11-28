@@ -30,7 +30,7 @@ services:
       - node.name=es-master
       - node.roles=master
       - cluster.name=${ES_CLUSTER_NAME}
-      - discovery.seed_hosts=es-data-1,es-data-2
+      - discovery.seed_hosts=es-data-1
       - cluster.initial_master_nodes=es-master
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=${ES_MASTER_JAVA_OPTS}"
@@ -64,7 +64,7 @@ services:
       - node.name=es-data-1
       - node.roles=data,ingest
       - cluster.name=${ES_CLUSTER_NAME}
-      - discovery.seed_hosts=es-master,es-data-2
+      - discovery.seed_hosts=es-master
       - cluster.initial_master_nodes=es-master
       - bootstrap.memory_lock=true
       - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
@@ -90,41 +90,42 @@ services:
           cpus: '${ES_DATA_CPU_RESERVATION}'
           memory: ${ES_DATA_MEMORY_RESERVATION}
 
-  es-data-2:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
-    container_name: blockchain_es_data_2
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - node.name=es-data-2
-      - node.roles=data,ingest
-      - cluster.name=${ES_CLUSTER_NAME}
-      - discovery.seed_hosts=es-master,es-data-1
-      - cluster.initial_master_nodes=es-master
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
-      - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - elasticsearch_data_2:/usr/share/elasticsearch/data
-      - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
-      - ./logs/elasticsearch:/usr/share/elasticsearch/logs
-    networks:
-      - blockchain_monitor
-    depends_on:
-      - es-master
-    deploy:
-      resources:
-        limits:
-          cpus: '${ES_DATA_CPU_LIMIT}'
-          memory: ${ES_DATA_MEMORY_LIMIT}
-        reservations:
-          cpus: '${ES_DATA_CPU_RESERVATION}'
-          memory: ${ES_DATA_MEMORY_RESERVATION}
+  # es-data-2: DISABLED for 3GB RAM environment
+  # es-data-2:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:${ES_VERSION}
+  #   container_name: blockchain_es_data_2
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - node.name=es-data-2
+  #     - node.roles=data,ingest
+  #     - cluster.name=${ES_CLUSTER_NAME}
+  #     - discovery.seed_hosts=es-master,es-data-1
+  #     - cluster.initial_master_nodes=es-master
+  #     - bootstrap.memory_lock=true
+  #     - "ES_JAVA_OPTS=${ES_DATA_JAVA_OPTS}"
+  #     - xpack.security.enabled=${XPACK_SECURITY_ENABLED}
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   volumes:
+  #     - elasticsearch_data2:/usr/share/elasticsearch/data
+  #     - ./configs/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+  #     - ./logs/elasticsearch:/usr/share/elasticsearch/logs
+  #   networks:
+  #     - blockchain_monitor
+  #   depends_on:
+  #     - es-master
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '${ES_DATA_CPU_LIMIT}'
+  #         memory: ${ES_DATA_MEMORY_LIMIT}
+  #       reservations:
+  #         cpus: '${ES_DATA_CPU_RESERVATION}'
+  #         memory: ${ES_DATA_MEMORY_RESERVATION}
 
   es-lb:
     image: nginx:alpine
@@ -140,7 +141,7 @@ services:
     depends_on:
       - es-master
       - es-data-1
-      - es-data-2
+      # - es-data-2  # DISABLED
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9200/_cluster/health"]
       interval: 30s

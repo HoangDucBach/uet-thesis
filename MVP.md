@@ -1,20 +1,27 @@
-# MVP Setup - Infrastructure Only
+# MVP Setup - 3GB RAM Environment
 
-## Services Running (MVP)
-- PostgreSQL (blockchain_postgres)
+## Services Running (Core MVP)
+- PostgreSQL (blockchain_postgres) - ~512MB
 - Elasticsearch Cluster:
-  - es-master
-  - es-data-1
-  - es-data-2
+  - es-master (256MB heap, 512MB total)
+  - es-data-1 (768MB heap, 1.5GB total)
   - es-lb (load balancer)
-- Redis
-- Kibana (visualization & monitoring)
-- Logstash (log processing & aggregation)
+- Redis (~256-512MB)
 
-## Disabled (for performance)
-- Prometheus
-- Nginx reverse proxy
-- Filebeat
+**Total RAM usage: ~2.5-3GB**
+
+## Disabled (due to 3GB RAM constraint)
+- es-data-2 (can be enabled for production with more RAM)
+- Kibana (uncomment in docker-compose.yml when needed for visualization)
+- Logstash (uncomment in docker-compose.yml when needed)
+- Prometheus (monitoring - for production)
+- Nginx reverse proxy (for production)
+- Filebeat (log shipping - for production)
+
+## Re-enabling Services
+To enable Kibana/Logstash when you have more RAM available:
+1. Uncomment the service in `docker-compose.yml`
+2. Run `docker compose up -d kibana` or `docker compose up -d logstash`
 
 ## Start Infrastructure
 
@@ -31,17 +38,12 @@ docker compose ps
 # PostgreSQL
 docker exec blockchain_postgres pg_isready -U postgres
 
-# Elasticsearch cluster
-curl http://localhost:9200/_cluster/health
+# Elasticsearch cluster (should show 2 nodes: master + data-1)
+curl http://localhost:9200/_cluster/health?pretty
+# Expected: "status": "green" or "yellow", "number_of_nodes": 2
 
 # Redis
 docker exec blockchain_redis redis-cli -a Admin2025@ ping
-
-# Kibana (wait for it to be ready, may take 1-2 minutes)
-curl -I http://localhost:5601/api/status
-
-# Logstash
-curl http://localhost:9600/_node/stats
 ```
 
 ## Run Indexer
