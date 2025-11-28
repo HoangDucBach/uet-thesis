@@ -149,38 +149,6 @@ services:
       timeout: 10s
       retries: 3
 
-  kibana:
-    image: docker.elastic.co/kibana/kibana:${ES_VERSION}
-    container_name: blockchain_kibana
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_URL}
-      - ELASTICSEARCH_USERNAME=${KIBANA_USERNAME}
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=${KIBANA_PORT}
-      - xpack.security.enabled=${KIBANA_XPACK_SECURITY_ENABLED}
-    ports:
-      - "${KIBANA_PORT}:5601"
-    volumes:
-      - ./configs/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
-      - kibana_data:/usr/share/kibana/data
-      - ./logs/kibana:/usr/share/kibana/logs
-    networks:
-      - blockchain_monitor
-    depends_on:
-      - es-lb
-    deploy:
-      resources:
-        limits:
-          cpus: '${KIBANA_CPU_LIMIT}'
-          memory: ${KIBANA_MEMORY_LIMIT}
-        reservations:
-          cpus: '${KIBANA_CPU_RESERVATION}'
-          memory: ${KIBANA_MEMORY_RESERVATION}
-
   redis:
     image: redis:7-alpine
     container_name: blockchain_redis
@@ -203,59 +171,6 @@ services:
         reservations:
           memory: ${REDIS_MEMORY_RESERVATION}
 
-  nginx:
-    image: nginx:alpine
-    container_name: blockchain_nginx
-    restart: unless-stopped
-    ports:
-      - "${NGINX_HTTP_PORT}:80"
-    volumes:
-      - ./configs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./logs/nginx:/var/log/nginx
-    networks:
-      - blockchain_monitor
-    depends_on:
-      - es-lb
-      - kibana
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: blockchain_prometheus
-    restart: unless-stopped
-    ports:
-      - "${PROMETHEUS_PORT}:9090"
-    volumes:
-      - prometheus_data:/prometheus
-      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    networks:
-      - blockchain_monitor
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:${ES_VERSION}
-    container_name: blockchain_filebeat
-    restart: unless-stopped
-    user: root
-    volumes:
-      - ./configs/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - ./logs:/var/log/app:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - blockchain_monitor
-    depends_on:
-      - es-lb
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
-
 networks:
   blockchain_monitor:
     driver: bridge
@@ -270,9 +185,5 @@ volumes:
     name: blockchain_es_data1
   elasticsearch_data2:
     name: blockchain_es_data2
-  kibana_data:
-    name: blockchain_kibana_data
   redis_data:
     name: blockchain_redis_data
-  prometheus_data:
-    name: blockchain_prometheus_data
