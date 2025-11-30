@@ -12,7 +12,7 @@ use sui_types::full_checkpoint_content::Checkpoint;
 use sui_types::effects::TransactionEffectsAPI;
 use sui_types::transaction::TransactionDataAPI;
 
-use crate::models::{Transaction, EsFlattener};
+use crate::models::{Transaction, EsFlattener, TransactionWithEs};
 use crate::schema::transactions::dsl::transactions;
 use crate::elasticsearch::SharedEsClient;
 
@@ -29,7 +29,7 @@ impl TransactionHandler {
 #[async_trait]
 impl Processor for TransactionHandler {
     const NAME: &'static str = "transaction_handler";
-    type Value = Transaction;
+    type Value = TransactionWithEs;
 
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
         let checkpoint_seq = checkpoint.summary.sequence_number as i64;
@@ -37,7 +37,8 @@ impl Processor for TransactionHandler {
 
         let txs = checkpoint.transactions.iter().map(|tx| {
             let effects = &tx.effects;
-            let transaction = &tx.transaction;
+            // tx.transaction is already TransactionData (not Envelope)
+            let transaction_data = &tx.transaction;
 
             // Get status from effects
             use sui_types::execution_status::ExecutionStatus;
@@ -45,23 +46,44 @@ impl Processor for TransactionHandler {
                 ExecutionStatus::Success { .. } => "success",
                 _ => "failure",
             };
-
+            
             // Get sender
-            let sender = transaction.sender().to_string();
+            let sender = transaction_data.sender().to_string();
 
-            // Serialize complete raw transaction and effects
-            let raw_transaction = serde_json::to_value(transaction).unwrap_or(json!({}));
+            // Serialize complete raw transaction and effects for DB
+            // Need to serialize the full transaction envelope, not just TransactionData
+            // For now, serialize transaction_data (we'll need to get the envelope if needed)
+            let raw_transaction = serde_json::to_value(transaction_data).unwrap_or(json!({}));
             let raw_effects = serde_json::to_value(effects).unwrap_or(json!({}));
 
-            Transaction {
-                tx_digest: transaction.digest().to_string(),
+            // Get transaction digest - TransactionData has digest() method
+            let tx_digest = transaction_data.digest().to_string();
+
+            // Create DB transaction
+            let db_transaction = Transaction {
+                tx_digest: tx_digest.clone(),
                 checkpoint_sequence_number: checkpoint_seq,
-                sender,
+                sender: sender.clone(),
                 timestamp_ms: checkpoint_ts,
                 execution_status: status.to_string(),
-                raw_transaction,
-                raw_effects: Some(raw_effects),
+                raw_transaction: raw_transaction.clone(),
+                raw_effects: Some(raw_effects.clone()),
                 created_at: chrono::Utc::now(),
+            };
+
+            // Flatten ES document DIRECTLY from ExecuteTransaction (type-safe)
+            let es_transaction = EsFlattener::flatten(
+                transaction_data,
+                effects,
+                checkpoint_seq,
+                checkpoint_ts,
+                &status,
+                &tx_digest,
+            );
+
+            TransactionWithEs {
+                db_transaction,
+                es_transaction,
             }
         }).collect();
 
@@ -85,32 +107,37 @@ impl Handler for TransactionHandler {
     ) -> Result<usize> {
         use crate::schema::transactions::dsl::tx_digest;
 
-        // 1. Insert into PostgreSQL (raw JSONB)
+        if batch.is_empty() {
+            return Ok(0);
+        }
+
+        // 1. Extract DB transactions and insert into PostgreSQL
+        let db_transactions: Vec<Transaction> = batch.iter()
+            .map(|tx_with_es| tx_with_es.db_transaction.clone())
+            .collect();
+
         let inserted = diesel::insert_into(transactions)
-            .values(batch)
+            .values(&db_transactions)
             .on_conflict(tx_digest)
             .do_nothing()
             .execute(conn)
             .await?;
 
-        // 2. Flatten and index into Elasticsearch
-        if !batch.is_empty() {
-            let es_docs: Vec<_> = batch
-                .iter()
-                .map(|tx| {
-                    let es_tx = EsFlattener::flatten(tx);
-                    serde_json::to_value(&es_tx).unwrap_or(json!({}))
-                })
-                .collect();
+        // 2. Index pre-flattened ES documents (flattened directly from ExecuteTransaction)
+        let es_docs: Vec<_> = batch
+            .iter()
+            .map(|tx_with_es| {
+                serde_json::to_value(&tx_with_es.es_transaction).unwrap_or(json!({}))
+            })
+            .collect();
 
-            // Bulk index to ES (don't fail if ES is down)
-            match self.es_client.bulk_index_transactions(&es_docs).await {
-                Ok(count) => {
-                    println!("✓ Indexed {} transactions to Elasticsearch (flattened)", count);
-                }
-                Err(e) => {
-                    eprintln!("⚠ Warning: Failed to index to Elasticsearch: {}", e);
-                }
+        // Bulk index to ES (don't fail if ES is down)
+        match self.es_client.bulk_index_transactions(&es_docs).await {
+            Ok(count) => {
+                println!("✓ Indexed {} transactions to Elasticsearch (flattened from ExecuteTransaction)", count);
+            }
+            Err(e) => {
+                eprintln!("⚠ Warning: Failed to index to Elasticsearch: {}", e);
             }
         }
 
