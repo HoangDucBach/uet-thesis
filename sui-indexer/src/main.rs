@@ -1,11 +1,9 @@
 mod models;
 mod handlers;
 mod elasticsearch;
-mod services;
-mod framework;
 pub mod schema;
 
-use handlers::{TransactionDigestHandler, TransactionHandler};
+use handlers::TransactionHandler;
 use elasticsearch::EsClient;
 
 use anyhow::Result;
@@ -16,7 +14,6 @@ use sui_indexer_alt_framework::{
     cluster::{Args, IndexerCluster},
     pipeline::sequential::SequentialConfig,
 };
-use tokio;
 use url::Url;
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
@@ -50,11 +47,6 @@ async fn main() -> Result<()> {
         .with_migrations(&MIGRATIONS)
         .build()
         .await?;
-
-    cluster.sequential_pipeline(
-        TransactionDigestHandler,
-        SequentialConfig::default(),
-    ).await?;
 
     cluster.sequential_pipeline(
         TransactionHandler::new(es_client),
