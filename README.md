@@ -2,9 +2,6 @@
 
 Infrastructure setup for Sui blockchain indexing and monitoring system.
 
-<<<<<<< HEAD
-## Prerequisites
-=======
 ## 📁 Project Structure
 
 ```
@@ -27,7 +24,6 @@ uet-thesis/
 ```
 
 ## 🚀 Prerequisites
->>>>>>> 3650996487a4cc999ff62feaab1d1de5f19e85ec
 
 - Docker Engine 20.10+
 - Docker Compose 2.0+

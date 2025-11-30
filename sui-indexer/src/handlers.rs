@@ -2,7 +2,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use diesel_async::RunQueryDsl;
-use serde_json::json;
+use serde_json::{json, Value};
 use sui_indexer_alt_framework::{
     pipeline::Processor,
     postgres::{Connection, Db},
@@ -75,6 +75,7 @@ impl Processor for TransactionHandler {
             let es_transaction = EsFlattener::flatten(
                 transaction_data,
                 effects,
+                tx.events.as_ref(), // Pass events reference from ExecuteTransaction
                 checkpoint_seq,
                 checkpoint_ts,
                 &status,
@@ -124,10 +125,15 @@ impl Handler for TransactionHandler {
             .await?;
 
         // 2. Index pre-flattened ES documents (flattened directly from ExecuteTransaction)
-        let es_docs: Vec<_> = batch
+        // EsTransaction already implements Serialize, convert to JSON Value
+        let es_docs: Vec<Value> = batch
             .iter()
             .map(|tx_with_es| {
-                serde_json::to_value(&tx_with_es.es_transaction).unwrap_or(json!({}))
+                serde_json::to_value(&tx_with_es.es_transaction)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Failed to serialize EsTransaction: {}", e);
+                        json!({})
+                    })
             })
             .collect();
 

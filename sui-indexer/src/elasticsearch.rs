@@ -108,18 +108,90 @@ impl EsClient {
             return Ok(());
         }
 
-        // Create index with mappings
+        // Create index with mappings - full structure
         let mappings = json!({
             "mappings": {
                 "properties": {
                     "tx_digest": { "type": "keyword" },
                     "checkpoint_sequence_number": { "type": "long" },
-                    "sender": { "type": "keyword" },
-                    "gas_budget": { "type": "long" },
-                    "gas_used": { "type": "long" },
-                    "execution_status": { "type": "keyword" },
                     "timestamp_ms": { "type": "date", "format": "epoch_millis" },
-                    "transaction_data": { "type": "object", "enabled": true }
+                    "sender": { "type": "keyword" },
+                    "execution_status": { "type": "keyword" },
+                    "kind": { "type": "keyword" },
+                    "is_system_tx": { "type": "boolean" },
+                    "is_sponsored_tx": { "type": "boolean" },
+                    "is_end_of_epoch_tx": { "type": "boolean" },
+                    "gas": {
+                        "properties": {
+                            "owner": { "type": "keyword" },
+                            "budget": { "type": "long" },
+                            "price": { "type": "long" },
+                            "used": { "type": "long" },
+                            "computation_cost": { "type": "long" },
+                            "storage_cost": { "type": "long" },
+                            "storage_rebate": { "type": "long" }
+                        }
+                    },
+                    "move_calls": {
+                        "type": "nested",
+                        "properties": {
+                            "package": { "type": "keyword" },
+                            "module": { "type": "keyword" },
+                            "function": { "type": "keyword" },
+                            "full_name": { "type": "keyword" }
+                        }
+                    },
+                    "objects": {
+                        "type": "nested",
+                        "properties": {
+                            "object_id": { "type": "keyword" },
+                            "type": { "type": "keyword" },
+                            "owner": { "type": "keyword" }
+                        }
+                    },
+                    "effects": {
+                        "properties": {
+                            "created_count": { "type": "integer" },
+                            "mutated_count": { "type": "integer" },
+                            "deleted_count": { "type": "integer" },
+                            "all_changed_objects": {
+                                "type": "nested",
+                                "properties": {
+                                    "object_id": { "type": "keyword" },
+                                    "input_version": { "type": "long" },
+                                    "input_digest": { "type": "keyword" },
+                                    "input_owner": { "type": "keyword" },
+                                    "input_state_type": { "type": "keyword" },
+                                    "output_version": { "type": "long" },
+                                    "output_digest": { "type": "keyword" },
+                                    "output_owner": { "type": "keyword" },
+                                    "output_state_type": { "type": "keyword" },
+                                    "id_operation": { "type": "keyword" }
+                                }
+                            },
+                            "all_removed_objects": {
+                                "type": "nested",
+                                "properties": {
+                                    "object_id": { "type": "keyword" },
+                                    "version": { "type": "long" },
+                                    "digest": { "type": "keyword" },
+                                    "remove_kind": { "type": "keyword" }
+                                }
+                            }
+                        }
+                    },
+                    "events": {
+                        "type": "nested",
+                        "properties": {
+                            "type": { "type": "keyword" },
+                            "package": { "type": "keyword" },
+                            "module": { "type": "keyword" },
+                            "sender": { "type": "keyword" }
+                        }
+                    },
+                    "packages": { "type": "keyword" },
+                    "modules": { "type": "keyword" },
+                    "functions": { "type": "keyword" }
                 }
             },
             "settings": {

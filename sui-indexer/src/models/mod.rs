@@ -5,6 +5,7 @@ pub mod es_flattener;
 pub use transaction::Transaction;
 pub use es_transaction::{
     EsTransaction, EsGas, EsMoveCall, EsObject, EsEffects, EsEvent,
+    EsChangedObject, EsRemovedObject,
 };
 pub use es_flattener::EsFlattener;
 

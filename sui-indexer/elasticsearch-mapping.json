@@ -57,7 +57,7 @@
       "execution_status": {
         "type": "keyword"
       },
-      "transaction_kind": {
+      "kind": {
         "type": "keyword"
       },
       "is_system_tx": {
