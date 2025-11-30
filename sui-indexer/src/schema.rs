@@ -1,6 +1,13 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    transaction_digests (tx_digest) {
+        tx_digest -> Text,
+        checkpoint_sequence_number -> Int8,
+    }
+}
+
+diesel::table! {
     transactions (id) {
         id -> Int8,
         tx_digest -> Text,
@@ -90,12 +97,11 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(move_calls -> transactions (tx_digest));
-diesel::joinable!(transaction_objects -> transactions (tx_digest));
-diesel::joinable!(transaction_effects -> transactions (tx_digest));
-diesel::joinable!(detection_results -> transactions (tx_digest));
+// Note: joinable! macros removed because we're joining on tx_digest (not primary key)
+// Joins can still be performed manually without type-safety macros
 
 diesel::allow_tables_to_appear_in_same_query!(
+    transaction_digests,
     transactions,
     move_calls,
     transaction_objects,

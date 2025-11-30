@@ -1,3 +1,6 @@
+// Legacy models for backward compatibility with existing handlers
+// These will be migrated to the new clean architecture models over time
+
 use diesel::prelude::*;
 use diesel::sql_types::Jsonb;
 use diesel::deserialize::{self, FromSql, FromSqlRow};
@@ -6,11 +9,11 @@ use diesel::expression::AsExpression;
 use diesel::pg::{Pg, PgValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use sui_indexer_alt_framework::FieldCount;
-use crate::schema::{transaction_digests, transactions};
 use std::io::Write;
 
-#[derive(Insertable, Debug, Clone, FieldCount)]
+use crate::schema::{transaction_digests, transactions};
+
+#[derive(Insertable, Debug, Clone)]
 #[diesel(table_name = transaction_digests)]
 pub struct StoredTransactionDigest {
     pub tx_digest: String,
@@ -52,15 +55,30 @@ impl From<JsonbValue> for JsonValue {
     }
 }
 
-#[derive(Insertable, Queryable, Serialize, Deserialize, Debug, Clone, FieldCount)]
+// Legacy transaction model (simplified version for old handlers)
+// Note: This uses a subset of the full transactions table fields
+#[derive(Insertable, Serialize, Deserialize, Debug, Clone)]
 #[diesel(table_name = transactions)]
-pub struct Transaction {
+pub struct LegacyTransaction {
     pub tx_digest: String,
     pub checkpoint_sequence_number: i64,
-    pub sender: Option<String>,
-    pub gas_budget: Option<i64>,
+    pub sender: String,
+    pub gas_owner: Option<String>,
+    pub gas_budget: i64,
     pub gas_used: Option<i64>,
+    pub gas_price: i64,
     pub execution_status: String,
-    pub timestamp_ms: Option<i64>,
-    pub transaction_data: Option<JsonbValue>,
+    pub timestamp_ms: i64,
+    pub transaction_kind: String,
+    pub is_system_tx: bool,
+    pub is_sponsored_tx: bool,
+    pub is_end_of_epoch_tx: bool,
+    pub total_move_calls: i32,
+    pub total_input_objects: i32,
+    pub total_shared_objects: i32,
+    pub computation_cost: Option<i64>,
+    pub storage_cost: Option<i64>,
+    pub storage_rebate: Option<i64>,
+    pub expiration_epoch: Option<i64>,
+    pub raw_transaction_data: JsonValue,
 }
