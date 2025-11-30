@@ -1,0 +1,6 @@
+-- Rollback clean schema
+
+DROP TABLE IF EXISTS events CASCADE;
+DROP TABLE IF EXISTS objects CASCADE;
+DROP TABLE IF EXISTS move_calls CASCADE;
+DROP TABLE IF EXISTS transactions CASCADE;
