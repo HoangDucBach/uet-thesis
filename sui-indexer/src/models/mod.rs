@@ -1,9 +1,9 @@
 pub mod transaction;
-pub mod move_call;
-pub mod object;
-pub mod event;
+pub mod es_transaction;
+pub mod es_flattener;
 
 pub use transaction::Transaction;
-pub use move_call::MoveCall;
-pub use object::Object;
-pub use event::Event;
+pub use es_transaction::{
+    EsTransaction, EsGas, EsMoveCall, EsObject, EsEffects, EsBalanceChange, EsEvent,
+};
+pub use es_flattener::EsFlattener;
