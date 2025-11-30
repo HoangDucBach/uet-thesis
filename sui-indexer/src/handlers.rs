@@ -7,7 +7,7 @@ use sui_types::effects::TransactionEffectsAPI;
 use sui_types::transaction::TransactionDataAPI;
 use serde_json::{json, Value};
 
-use crate::models::{StoredTransactionDigest, Transaction, JsonbValue};
+use crate::models::{StoredTransactionDigest, LegacyTransaction as Transaction, JsonbValue};
 use crate::schema::transaction_digests::dsl::transaction_digests;
 use crate::schema::transactions::dsl::transactions;
 use crate::elasticsearch::SharedEsClient;
@@ -101,12 +101,25 @@ impl Processor for TransactionHandler {
             Transaction {
                 tx_digest: transaction.digest().to_string(),
                 checkpoint_sequence_number: checkpoint_seq,
-                sender: Some(sender),
-                gas_budget: Some(gas_data.budget as i64),
+                sender,
+                gas_owner: Some(gas_data.owner.to_string()),
+                gas_budget: gas_data.budget as i64,
                 gas_used: Some(gas_summary.computation_cost as i64),
+                gas_price: gas_data.price as i64,
                 execution_status: status.to_string(),
-                timestamp_ms: Some(checkpoint_ts),
-                transaction_data: Some(JsonbValue(json!({
+                timestamp_ms: checkpoint_ts,
+                transaction_kind: format!("{:?}", transaction.kind()),
+                is_system_tx: false,
+                is_sponsored_tx: false,
+                is_end_of_epoch_tx: false,
+                total_move_calls: 0,
+                total_input_objects: 0,
+                total_shared_objects: 0,
+                computation_cost: Some(gas_summary.computation_cost as i64),
+                storage_cost: Some(gas_summary.storage_cost as i64),
+                storage_rebate: Some(gas_summary.storage_rebate as i64),
+                expiration_epoch: None,
+                raw_transaction_data: serde_json::to_value(json!({
                     "transaction_kind": format!("{:?}", transaction.kind()),
                     "gas_owner": gas_data.owner.to_string(),
                     "gas_price": gas_data.price,
@@ -116,7 +129,7 @@ impl Processor for TransactionHandler {
                     "modified_objects_count": effects.modified_at_versions().len(),
                     "created_objects_count": effects.created().len(),
                     "deleted_objects_count": effects.deleted().len(),
-                }))),
+                })).unwrap(),
             }
         }).collect();
 
@@ -151,29 +164,18 @@ impl Handler for TransactionHandler {
         // Index into Elasticsearch (async, best effort)
         if !batch.is_empty() {
             let es_docs: Vec<Value> = batch.iter().map(|tx| {
-                let mut doc = json!({
+                json!({
                     "tx_digest": tx.tx_digest,
                     "checkpoint_sequence_number": tx.checkpoint_sequence_number,
                     "execution_status": tx.execution_status,
-                });
-
-                if let Some(ref sender) = tx.sender {
-                    doc["sender"] = json!(sender);
-                }
-                if let Some(gas_budget) = tx.gas_budget {
-                    doc["gas_budget"] = json!(gas_budget);
-                }
-                if let Some(gas_used) = tx.gas_used {
-                    doc["gas_used"] = json!(gas_used);
-                }
-                if let Some(timestamp_ms) = tx.timestamp_ms {
-                    doc["timestamp_ms"] = json!(timestamp_ms);
-                }
-                if let Some(ref tx_data) = tx.transaction_data {
-                    doc["transaction_data"] = tx_data.0.clone();
-                }
-
-                doc
+                    "sender": tx.sender,
+                    "gas_budget": tx.gas_budget,
+                    "gas_used": tx.gas_used,
+                    "gas_price": tx.gas_price,
+                    "timestamp_ms": tx.timestamp_ms,
+                    "transaction_kind": tx.transaction_kind,
+                    "raw_transaction_data": tx.raw_transaction_data,
+                })
             }).collect();
 
             // Bulk index to ES (don't fail if ES is down)

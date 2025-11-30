@@ -1,6 +1,8 @@
 mod models;
 mod handlers;
 mod elasticsearch;
+mod services;
+mod framework;
 pub mod schema;
 
 use handlers::{TransactionDigestHandler, TransactionHandler};
