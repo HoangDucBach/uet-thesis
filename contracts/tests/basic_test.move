@@ -1,28 +1,53 @@
 // tests/basic_test.move
 #[test_only]
 module simulation::basic_test {
-    use simulation::coin_factory::{Self, CoinFactory, USDC, USDT};
+    use simulation::coin_factory::{Self, CoinFactory};
+    use simulation::usdc;
+    use simulation::usdt;
+    use simulation::weth;
+    use simulation::btc;
+    use simulation::sui_coin;
     use simulation::simple_dex::{Self, Pool};
     use simulation::flash_loan_pool::{Self, FlashLoanPool};
     use simulation::price_oracle::{Self, PriceOracle};
-    use sui::test_scenario::{Self as ts, Scenario};
-    use sui::clock::{Self, Clock};
-    use sui::coin;
+    use sui::test_scenario::{Self as ts};
+    use sui::clock;
+    use sui::coin::{Self, TreasuryCap};
 
     const ADMIN: address = @0xAD;
     const ALICE: address = @0xA11CE;
-    const BOB: address = @0xB0B;
+
+    /// Helper function to initialize coin factory in tests
+    fun setup_coin_factory(scenario: &mut ts::Scenario) {
+        // Initialize coin modules
+        coin_factory::init_for_testing(ts::ctx(scenario));
+
+        ts::next_tx(scenario, ADMIN);
+
+        // Create factory with treasury caps
+        let usdc_treasury = ts::take_from_sender<TreasuryCap<usdc::USDC>>(scenario);
+        let usdt_treasury = ts::take_from_sender<TreasuryCap<usdt::USDT>>(scenario);
+        let weth_treasury = ts::take_from_sender<TreasuryCap<weth::WETH>>(scenario);
+        let btc_treasury = ts::take_from_sender<TreasuryCap<btc::BTC>>(scenario);
+        let sui_treasury = ts::take_from_sender<TreasuryCap<sui_coin::SUI_COIN>>(scenario);
+
+        coin_factory::create_factory(
+            usdc_treasury,
+            usdt_treasury,
+            weth_treasury,
+            btc_treasury,
+            sui_treasury,
+            ts::ctx(scenario)
+        );
+
+        ts::next_tx(scenario, ADMIN);
+    }
 
     #[test]
     fun test_coin_factory_creation() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize coin factory
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Mint some coins
         {
@@ -48,12 +73,7 @@ module simulation::basic_test {
     fun test_dex_pool_creation() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize coin factory
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Create DEX pool
         {
@@ -71,7 +91,7 @@ module simulation::basic_test {
 
         // Check pool exists and has correct reserves
         {
-            let pool = ts::take_shared<Pool<USDC, USDT>>(&scenario);
+            let pool = ts::take_shared<Pool<usdc::USDC, usdt::USDT>>(&scenario);
 
             let (reserve_a, reserve_b) = simple_dex::get_reserves(&pool);
             assert!(reserve_a == 1000000, 2);
@@ -87,12 +107,7 @@ module simulation::basic_test {
     fun test_simple_swap() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Create pool
         {
@@ -110,7 +125,7 @@ module simulation::basic_test {
 
         // Execute swap
         {
-            let mut pool = ts::take_shared<Pool<USDC, USDT>>(&scenario);
+            let mut pool = ts::take_shared<Pool<usdc::USDC, usdt::USDT>>(&scenario);
             let mut factory = ts::take_shared<CoinFactory>(&scenario);
 
             let usdc = coin_factory::mint_usdc(&mut factory, 10000, ts::ctx(&mut scenario));
@@ -131,12 +146,7 @@ module simulation::basic_test {
     fun test_flash_loan_pool() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Create flash loan pool
         {
@@ -152,7 +162,7 @@ module simulation::basic_test {
 
         // Test borrow and repay
         {
-            let mut pool = ts::take_shared<FlashLoanPool<USDC>>(&scenario);
+            let mut pool = ts::take_shared<FlashLoanPool<usdc::USDC>>(&scenario);
             let mut factory = ts::take_shared<CoinFactory>(&scenario);
 
             let (borrowed, receipt) = flash_loan_pool::borrow_flash_loan(
@@ -198,7 +208,7 @@ module simulation::basic_test {
         {
             let mut oracle = ts::take_shared<PriceOracle>(&scenario);
 
-            price_oracle::update_price<USDC>(
+            price_oracle::update_price<usdc::USDC>(
                 &mut oracle,
                 100000000, // $1.00 with 8 decimals
                 1000000,
@@ -206,7 +216,7 @@ module simulation::basic_test {
                 ts::ctx(&mut scenario)
             );
 
-            let (price, confidence) = price_oracle::get_price<USDC>(&oracle, &clock);
+            let (price, confidence) = price_oracle::get_price<usdc::USDC>(&oracle, &clock);
             assert!(price == 100000000, 6);
             assert!(confidence == 1000000, 7);
 

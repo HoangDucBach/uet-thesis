@@ -1,7 +1,8 @@
 // sources/attack_simulations/sandwich_attack.move
 module simulation::sandwich_attack {
     use simulation::simple_dex::{Self, Pool};
-    use simulation::coin_factory::{USDC, USDT};
+    use simulation::usdc::USDC;
+    use simulation::usdt::USDT;
     use sui::coin::{Self, Coin};
     use sui::event;
 

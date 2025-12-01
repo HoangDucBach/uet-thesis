@@ -1,7 +1,8 @@
 // sources/attack_simulations/flash_loan_attack.move
 module simulation::flash_loan_attack;
 
-use simulation::coin_factory::{USDC, USDT};
+use simulation::usdc::USDC;
+use simulation::usdt::USDT;
 use simulation::flash_loan_pool::{Self, FlashLoanPool};
 use simulation::price_oracle::{Self, PriceOracle};
 use simulation::simple_dex::{Self, Pool};
