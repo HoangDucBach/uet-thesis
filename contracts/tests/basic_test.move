@@ -226,4 +226,198 @@ module simulation::basic_test {
         clock::destroy_for_testing(clock);
         ts::end(scenario);
     }
+
+    #[test]
+    fun test_add_liquidity() {
+        let mut scenario = ts::begin(ADMIN);
+
+        setup_coin_factory(&mut scenario);
+
+        // Create initial pool
+        {
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdc = coin_factory::mint_usdc(&mut factory, 1000000, ts::ctx(&mut scenario));
+            let usdt = coin_factory::mint_usdt(&mut factory, 1000000, ts::ctx(&mut scenario));
+
+            simple_dex::create_pool(usdc, usdt, ts::ctx(&mut scenario));
+
+            ts::return_shared(factory);
+        };
+
+        ts::next_tx(&mut scenario, ALICE);
+
+        // Add liquidity to existing pool
+        {
+            let mut pool = ts::take_shared<Pool<USDC, USDT>>(&scenario);
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let (reserve_a_before, reserve_b_before) = simple_dex::get_reserves(&pool);
+            let lp_supply_before = simple_dex::get_lp_supply(&pool);
+
+            // Add 500k USDC and 500k USDT
+            let usdc = coin_factory::mint_usdc(&mut factory, 500000, ts::ctx(&mut scenario));
+            let usdt = coin_factory::mint_usdt(&mut factory, 500000, ts::ctx(&mut scenario));
+
+            simple_dex::add_liquidity(&mut pool, usdc, usdt, 0, ts::ctx(&mut scenario));
+
+            let (reserve_a_after, reserve_b_after) = simple_dex::get_reserves(&pool);
+            let lp_supply_after = simple_dex::get_lp_supply(&pool);
+
+            // Verify reserves increased
+            assert!(reserve_a_after > reserve_a_before, 8);
+            assert!(reserve_b_after > reserve_b_before, 9);
+            assert!(lp_supply_after > lp_supply_before, 10);
+
+            ts::return_shared(pool);
+            ts::return_shared(factory);
+        };
+
+        ts::end(scenario);
+    }
+
+    #[test]
+    fun test_swap_both_directions() {
+        let mut scenario = ts::begin(ADMIN);
+
+        setup_coin_factory(&mut scenario);
+
+        // Create pool
+        {
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdc = coin_factory::mint_usdc(&mut factory, 1000000, ts::ctx(&mut scenario));
+            let usdt = coin_factory::mint_usdt(&mut factory, 1000000, ts::ctx(&mut scenario));
+
+            simple_dex::create_pool(usdc, usdt, ts::ctx(&mut scenario));
+
+            ts::return_shared(factory);
+        };
+
+        ts::next_tx(&mut scenario, ALICE);
+
+        // Test swap A → B (USDC → USDT)
+        {
+            let mut pool = ts::take_shared<Pool<USDC, USDT>>(&scenario);
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdc = coin_factory::mint_usdc(&mut factory, 10000, ts::ctx(&mut scenario));
+            let usdt_out = simple_dex::swap_a_to_b(&mut pool, usdc, 0, ts::ctx(&mut scenario));
+
+            assert!(coin::value(&usdt_out) > 0, 11);
+
+            // Clean up
+            coin_factory::burn_usdt(&mut factory, usdt_out);
+
+            ts::return_shared(pool);
+            ts::return_shared(factory);
+        };
+
+        ts::next_tx(&mut scenario, ALICE);
+
+        // Test swap B → A (USDT → USDC)
+        {
+            let mut pool = ts::take_shared<Pool<USDC, USDT>>(&scenario);
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdt = coin_factory::mint_usdt(&mut factory, 10000, ts::ctx(&mut scenario));
+            let usdc_out = simple_dex::swap_b_to_a(&mut pool, usdt, 0, ts::ctx(&mut scenario));
+
+            assert!(coin::value(&usdc_out) > 0, 12);
+
+            // Clean up
+            coin_factory::burn_usdc(&mut factory, usdc_out);
+
+            ts::return_shared(pool);
+            ts::return_shared(factory);
+        };
+
+        ts::end(scenario);
+    }
+
+    #[test]
+    fun test_slippage_protection() {
+        let mut scenario = ts::begin(ADMIN);
+
+        setup_coin_factory(&mut scenario);
+
+        // Create pool
+        {
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdc = coin_factory::mint_usdc(&mut factory, 1000000, ts::ctx(&mut scenario));
+            let usdt = coin_factory::mint_usdt(&mut factory, 1000000, ts::ctx(&mut scenario));
+
+            simple_dex::create_pool(usdc, usdt, ts::ctx(&mut scenario));
+
+            ts::return_shared(factory);
+        };
+
+        ts::next_tx(&mut scenario, ALICE);
+
+        // Test with reasonable min_out (should pass)
+        {
+            let mut pool = ts::take_shared<Pool<USDC, USDT>>(&scenario);
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdc = coin_factory::mint_usdc(&mut factory, 10000, ts::ctx(&mut scenario));
+
+            // Calculate expected output
+            let expected_out = simple_dex::calculate_amount_out(&pool, 10000, true);
+            let min_out = expected_out * 95 / 100; // Accept 5% slippage
+
+            let usdt_out = simple_dex::swap_a_to_b(&mut pool, usdc, min_out, ts::ctx(&mut scenario));
+
+            assert!(coin::value(&usdt_out) >= min_out, 13);
+
+            coin_factory::burn_usdt(&mut factory, usdt_out);
+
+            ts::return_shared(pool);
+            ts::return_shared(factory);
+        };
+
+        ts::end(scenario);
+    }
+
+    #[test]
+    #[expected_failure(abort_code = simple_dex::E_SLIPPAGE_TOO_HIGH)]
+    fun test_slippage_protection_failure() {
+        let mut scenario = ts::begin(ADMIN);
+
+        setup_coin_factory(&mut scenario);
+
+        // Create pool
+        {
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdc = coin_factory::mint_usdc(&mut factory, 1000000, ts::ctx(&mut scenario));
+            let usdt = coin_factory::mint_usdt(&mut factory, 1000000, ts::ctx(&mut scenario));
+
+            simple_dex::create_pool(usdc, usdt, ts::ctx(&mut scenario));
+
+            ts::return_shared(factory);
+        };
+
+        ts::next_tx(&mut scenario, ALICE);
+
+        // Test with unrealistic min_out (should fail)
+        {
+            let mut pool = ts::take_shared<Pool<USDC, USDT>>(&scenario);
+            let mut factory = ts::take_shared<CoinFactory>(&scenario);
+
+            let usdc = coin_factory::mint_usdc(&mut factory, 10000, ts::ctx(&mut scenario));
+
+            // Demand more than possible
+            let min_out = 15000; // Unrealistic expectation
+
+            let usdt_out = simple_dex::swap_a_to_b(&mut pool, usdc, min_out, ts::ctx(&mut scenario));
+
+            coin_factory::burn_usdt(&mut factory, usdt_out);
+
+            ts::return_shared(pool);
+            ts::return_shared(factory);
+        };
+
+        ts::end(scenario);
+    }
 }
