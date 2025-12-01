@@ -1,17 +1,15 @@
 // sources/infrastructure/coin_factory.move
 module simulation::coin_factory {
     use sui::coin::{Self, Coin, TreasuryCap};
+    use simulation::usdc::USDC;
+    use simulation::usdt::USDT;
+    use simulation::weth::WETH;
+    use simulation::btc::BTC;
+    use simulation::sui_coin::SUI_COIN;
 
     // ============================================================================
     // Structs
     // ============================================================================
-
-    /// Test coin types for simulation
-    public struct USDC has drop {}
-    public struct USDT has drop {}
-    public struct WETH has drop {}
-    public struct BTC has drop {}
-    public struct SUI_COIN has drop {}
 
     /// Coin factory capability - holds all treasury caps
     public struct CoinFactory has key {
@@ -27,69 +25,15 @@ module simulation::coin_factory {
     // Initialization
     // ============================================================================
 
-    /// Initialize coin factory với unlimited minting cho testing
-    fun init(ctx: &mut TxContext) {
-        // Create USDC
-        let (usdc_treasury, usdc_metadata) = coin::create_currency(
-            USDC {},
-            6,
-            b"USDC",
-            b"USD Coin",
-            b"Test USDC for simulation",
-            std::option::none(),
-            ctx
-        );
-        transfer::public_freeze_object(usdc_metadata);
-
-        // Create USDT
-        let (usdt_treasury, usdt_metadata) = coin::create_currency(
-            USDT {},
-            6,
-            b"USDT",
-            b"Tether USD",
-            b"Test USDT for simulation",
-            std::option::none(),
-            ctx
-        );
-        transfer::public_freeze_object(usdt_metadata);
-
-        // Create WETH
-        let (weth_treasury, weth_metadata) = coin::create_currency(
-            WETH {},
-            8,
-            b"WETH",
-            b"Wrapped ETH",
-            b"Test WETH for simulation",
-            std::option::none(),
-            ctx
-        );
-        transfer::public_freeze_object(weth_metadata);
-
-        // Create BTC
-        let (btc_treasury, btc_metadata) = coin::create_currency(
-            BTC {},
-            8,
-            b"BTC",
-            b"Bitcoin",
-            b"Test BTC for simulation",
-            std::option::none(),
-            ctx
-        );
-        transfer::public_freeze_object(btc_metadata);
-
-        // Create SUI_COIN
-        let (sui_treasury, sui_metadata) = coin::create_currency(
-            SUI_COIN {},
-            9,
-            b"SUI",
-            b"Sui Token",
-            b"Test SUI for simulation",
-            std::option::none(),
-            ctx
-        );
-        transfer::public_freeze_object(sui_metadata);
-
-        // Create and share the factory
+    /// Create coin factory with treasury caps
+    public fun create_factory(
+        usdc_treasury: TreasuryCap<USDC>,
+        usdt_treasury: TreasuryCap<USDT>,
+        weth_treasury: TreasuryCap<WETH>,
+        btc_treasury: TreasuryCap<BTC>,
+        sui_treasury: TreasuryCap<SUI_COIN>,
+        ctx: &mut TxContext
+    ) {
         let factory = CoinFactory {
             id: object::new(ctx),
             usdc_treasury,
@@ -184,8 +128,13 @@ module simulation::coin_factory {
     }
 
     #[test_only]
-    /// Initialize for testing
+    /// Initialize for testing - init all coin modules and create factory
     public fun init_for_testing(ctx: &mut TxContext) {
-        init(ctx);
+        // Initialize all coin modules
+        simulation::usdc::test_init(ctx);
+        simulation::usdt::test_init(ctx);
+        simulation::weth::test_init(ctx);
+        simulation::btc::test_init(ctx);
+        simulation::sui_coin::test_init(ctx);
     }
 }

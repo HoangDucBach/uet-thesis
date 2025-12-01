@@ -1,28 +1,53 @@
 // tests/basic_test.move
 #[test_only]
 module simulation::basic_test {
-    use simulation::coin_factory::{Self, CoinFactory, USDC, USDT};
+    use simulation::coin_factory::{Self, CoinFactory};
+    use simulation::usdc::USDC;
+    use simulation::usdt::USDT;
+    use simulation::weth::WETH;
+    use simulation::btc::BTC;
+    use simulation::sui_coin::SUI_COIN;
     use simulation::simple_dex::{Self, Pool};
     use simulation::flash_loan_pool::{Self, FlashLoanPool};
     use simulation::price_oracle::{Self, PriceOracle};
-    use sui::test_scenario::{Self as ts, Scenario};
-    use sui::clock::{Self, Clock};
-    use sui::coin;
+    use sui::test_scenario::{Self as ts};
+    use sui::clock;
+    use sui::coin::{Self, TreasuryCap};
 
     const ADMIN: address = @0xAD;
     const ALICE: address = @0xA11CE;
-    const BOB: address = @0xB0B;
+
+    /// Helper function to initialize coin factory in tests
+    fun setup_coin_factory(scenario: &mut ts::Scenario) {
+        // Initialize coin modules
+        coin_factory::init_for_testing(ts::ctx(scenario));
+
+        ts::next_tx(scenario, ADMIN);
+
+        // Create factory with treasury caps
+        let usdc_treasury = ts::take_from_sender<TreasuryCap<USDC>>(scenario);
+        let usdt_treasury = ts::take_from_sender<TreasuryCap<USDT>>(scenario);
+        let weth_treasury = ts::take_from_sender<TreasuryCap<WETH>>(scenario);
+        let btc_treasury = ts::take_from_sender<TreasuryCap<BTC>>(scenario);
+        let sui_treasury = ts::take_from_sender<TreasuryCap<SUI_COIN>>(scenario);
+
+        coin_factory::create_factory(
+            usdc_treasury,
+            usdt_treasury,
+            weth_treasury,
+            btc_treasury,
+            sui_treasury,
+            ts::ctx(scenario)
+        );
+
+        ts::next_tx(scenario, ADMIN);
+    }
 
     #[test]
     fun test_coin_factory_creation() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize coin factory
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Mint some coins
         {
@@ -48,12 +73,7 @@ module simulation::basic_test {
     fun test_dex_pool_creation() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize coin factory
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Create DEX pool
         {
@@ -87,12 +107,7 @@ module simulation::basic_test {
     fun test_simple_swap() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Create pool
         {
@@ -131,12 +146,7 @@ module simulation::basic_test {
     fun test_flash_loan_pool() {
         let mut scenario = ts::begin(ADMIN);
 
-        // Initialize
-        {
-            coin_factory::init_for_testing(ts::ctx(&mut scenario));
-        };
-
-        ts::next_tx(&mut scenario, ADMIN);
+        setup_coin_factory(&mut scenario);
 
         // Create flash loan pool
         {
