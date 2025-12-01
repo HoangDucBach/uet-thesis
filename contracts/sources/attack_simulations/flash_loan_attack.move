@@ -141,6 +141,11 @@ public fun execute_simple_arbitrage(
 
     // Repay loan
     let repayment_amount = loan_amount + ((loan_amount * 9) / 10000);
+    let usdc_received_value = coin::value(&usdc_received);
+    
+    // Ensure we have enough to repay
+    assert!(usdc_received_value >= repayment_amount, 2);
+    
     let repayment = coin::split(&mut usdc_received, repayment_amount, ctx);
     flash_loan_pool::repay_flash_loan(flash_pool, repayment, loan_receipt, ctx);
 
