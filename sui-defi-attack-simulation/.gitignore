@@ -1,0 +1,11 @@
+# Sui Move build artifacts
+build/
+.trace
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
