@@ -15,14 +15,33 @@ use sui_types::transaction::TransactionDataAPI;
 use crate::models::{Transaction, EsFlattener, TransactionWithEs};
 use crate::schema::transactions::dsl::transactions;
 use crate::elasticsearch::SharedEsClient;
+use crate::pipeline::{DetectionPipeline, FlashLoanDetector, PriceManipulationDetector, SandwichDetector};
+use crate::action::{ActionPipeline, LogAction, AlertAction};
+use crate::risk::{DetectionContext, RiskLevel};
 
 pub struct TransactionHandler {
     es_client: SharedEsClient,
+    detection_pipeline: DetectionPipeline,
+    action_pipeline: ActionPipeline,
 }
 
 impl TransactionHandler {
     pub fn new(es_client: SharedEsClient) -> Self {
-        Self { es_client }
+        let detection_pipeline = DetectionPipeline::new()
+            .add_detector(FlashLoanDetector::new())
+            .add_detector(PriceManipulationDetector::new())
+            .add_detector(SandwichDetector::new());
+
+        let webhook_url = std::env::var("ALERT_WEBHOOK_URL").ok();
+        let action_pipeline = ActionPipeline::new()
+            .add_handler(LogAction::new())
+            .add_handler(AlertAction::new(webhook_url, RiskLevel::High));
+
+        Self {
+            es_client,
+            detection_pipeline,
+            action_pipeline,
+        }
     }
 }
 
@@ -35,31 +54,23 @@ impl Processor for TransactionHandler {
         let checkpoint_seq = checkpoint.summary.sequence_number as i64;
         let checkpoint_ts = checkpoint.summary.timestamp_ms as i64;
 
-        let txs = checkpoint.transactions.iter().map(|tx| {
+        let mut txs = Vec::new();
+
+        for tx in &checkpoint.transactions {
             let effects = &tx.effects;
-            // tx.transaction is already TransactionData (not Envelope)
             let transaction_data = &tx.transaction;
 
-            // Get status from effects
             use sui_types::execution_status::ExecutionStatus;
             let status = match effects.status() {
                 ExecutionStatus::Success { .. } => "success",
                 _ => "failure",
             };
-            
-            // Get sender
-            let sender = transaction_data.sender().to_string();
 
-            // Serialize complete raw transaction and effects for DB
-            // Need to serialize the full transaction envelope, not just TransactionData
-            // For now, serialize transaction_data (we'll need to get the envelope if needed)
+            let sender = transaction_data.sender().to_string();
             let raw_transaction = serde_json::to_value(transaction_data).unwrap_or(json!({}));
             let raw_effects = serde_json::to_value(effects).unwrap_or(json!({}));
-
-            // Get transaction digest - TransactionData has digest() method
             let tx_digest = transaction_data.digest().to_string();
 
-            // Create DB transaction
             let db_transaction = Transaction {
                 tx_digest: tx_digest.clone(),
                 checkpoint_sequence_number: checkpoint_seq,
@@ -71,22 +82,34 @@ impl Processor for TransactionHandler {
                 created_at: chrono::Utc::now(),
             };
 
-            // Flatten ES document DIRECTLY from ExecuteTransaction (type-safe)
             let es_transaction = EsFlattener::flatten(
                 transaction_data,
                 effects,
-                tx.events.as_ref(), // Pass events reference from ExecuteTransaction
+                tx.events.as_ref(),
                 checkpoint_seq,
                 checkpoint_ts,
                 &status,
                 &tx_digest,
             );
 
-            TransactionWithEs {
+            let context = DetectionContext::new(
+                tx_digest.clone(),
+                sender.clone(),
+                checkpoint_seq,
+                checkpoint_ts,
+            );
+
+            let risk_events = self.detection_pipeline.run(tx, &context).await;
+
+            for event in risk_events {
+                self.action_pipeline.execute(&event).await;
+            }
+
+            txs.push(TransactionWithEs {
                 db_transaction,
                 es_transaction,
-            }
-        }).collect();
+            });
+        }
 
         Ok(txs)
     }
