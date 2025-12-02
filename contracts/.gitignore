@@ -9,3 +9,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Move
+Move.lock
