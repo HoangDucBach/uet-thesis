@@ -129,47 +129,53 @@ impl Handler for TransactionHandler {
         batch: &Self::Batch,
         conn: &mut Connection<'a>,
     ) -> Result<usize> {
-        use crate::schema::transactions::dsl::tx_digest;
+        // use crate::schema::transactions::dsl::tx_digest;
 
         if batch.is_empty() {
             return Ok(0);
         }
 
-        // 1. Extract DB transactions and insert into PostgreSQL
-        let db_transactions: Vec<Transaction> = batch.iter()
-            .map(|tx_with_es| tx_with_es.db_transaction.clone())
-            .collect();
+        // ========== COMMENTED OUT FOR TESTING DETECTION ONLY ==========
+        // TODO: Uncomment when ready to store data
+        
+        // // 1. Extract DB transactions and insert into PostgreSQL
+        // let db_transactions: Vec<Transaction> = batch.iter()
+        //     .map(|tx_with_es| tx_with_es.db_transaction.clone())
+        //     .collect();
 
-        let inserted = diesel::insert_into(transactions)
-            .values(&db_transactions)
-            .on_conflict(tx_digest)
-            .do_nothing()
-            .execute(conn)
-            .await?;
+        // let inserted = diesel::insert_into(transactions)
+        //     .values(&db_transactions)
+        //     .on_conflict(tx_digest)
+        //     .do_nothing()
+        //     .execute(conn)
+        //     .await?;
 
-        // 2. Index pre-flattened ES documents (flattened directly from ExecuteTransaction)
-        // EsTransaction already implements Serialize, convert to JSON Value
-        let es_docs: Vec<Value> = batch
-            .iter()
-            .map(|tx_with_es| {
-                serde_json::to_value(&tx_with_es.es_transaction)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Failed to serialize EsTransaction: {}", e);
-                        json!({})
-                    })
-            })
-            .collect();
+        // // 2. Index pre-flattened ES documents (flattened directly from ExecuteTransaction)
+        // // EsTransaction already implements Serialize, convert to JSON Value
+        // let es_docs: Vec<Value> = batch
+        //     .iter()
+        //     .map(|tx_with_es| {
+        //         serde_json::to_value(&tx_with_es.es_transaction)
+        //             .unwrap_or_else(|e| {
+        //                 eprintln!("Failed to serialize EsTransaction: {}", e);
+        //                 json!({})
+        //             })
+        //     })
+        //     .collect();
 
-        // Bulk index to ES (don't fail if ES is down)
-        match self.es_client.bulk_index_transactions(&es_docs).await {
-            Ok(count) => {
-                println!("✓ Indexed {} transactions to Elasticsearch (flattened from ExecuteTransaction)", count);
-            }
-            Err(e) => {
-                eprintln!("⚠ Warning: Failed to index to Elasticsearch: {}", e);
-            }
-        }
+        // // Bulk index to ES (don't fail if ES is down)
+        // match self.es_client.bulk_index_transactions(&es_docs).await {
+        //     Ok(count) => {
+        //         println!("✓ Indexed {} transactions to Elasticsearch (flattened from ExecuteTransaction)", count);
+        //     }
+        //     Err(e) => {
+        //         eprintln!("⚠ Warning: Failed to index to Elasticsearch: {}", e);
+        //     }
+        // }
 
-        Ok(inserted)
+        // ========== END COMMENTED SECTION ==========
+
+        println!("📊 Processed {} transactions (storage disabled for testing)", batch.len());
+        Ok(batch.len())
     }
 }
