@@ -1,0 +1,1 @@
+sui client publish --doc --skip-dependency-verification
