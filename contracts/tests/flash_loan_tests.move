@@ -132,7 +132,6 @@ module simulation::flash_loan_tests {
 
     #[test]
     #[expected_failure(abort_code = flash_loan_pool::E_INSUFFICIENT_BALANCE)]
-    #[allow(dead_code)]
     /// Test: Cannot borrow more than pool liquidity
     fun test_flash_loan_exceeds_liquidity() {
         let mut scenario = test::begin(ADMIN);
@@ -148,19 +147,19 @@ module simulation::flash_loan_tests {
 
         test::next_tx(&mut scenario, BOB);
         {
-            let mut factory = test::take_shared<CoinFactory>(&scenario);
             let mut pool = test::take_shared<FlashLoanPool<USDC>>(&scenario);
 
-            // Try to borrow more than available (this will abort immediately)
-            let (borrowed, _receipt) = flash_loan_pool::borrow_flash_loan(
+            // Try to borrow more than available
+            let (borrowed, receipt) = flash_loan_pool::borrow_flash_loan(
                 &mut pool,
                 POOL_LIQUIDITY + 1, // This will fail
                 test::ctx(&mut scenario)
             );
 
-            // Code below won't execute due to abort above, but needs to be valid
-            coin_factory::burn_usdc(&mut factory, borrowed);
-            abort 999
+            // Clean up (won't reach here)
+            flash_loan_pool::repay_flash_loan(&mut pool, borrowed, receipt, test::ctx(&mut scenario));
+
+            test::return_shared(pool);
         };
 
         test::end(scenario);

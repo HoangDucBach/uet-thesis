@@ -1,70 +1,400 @@
-use sui_types::full_checkpoint_content::CheckpointTransaction;
-use sui_types::base_types::ObjectID;
+// Copyright (c) 2024 DeFi Protocol Indexer
+// Flash Loan Attack Detection using Multi-Signal Pattern Analysis
+
+use sui_types::full_checkpoint_content::ExecutedTransaction;
+use std::collections::HashSet;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
 
-pub struct FlashLoanAnalyzer;
+/// Flash loan information extracted from events
+#[derive(Debug, Clone)]
+struct FlashLoanInfo {
+    pool_id: String,
+    amount: u64,
+    fee: u64,
+}
+
+/// Swap information extracted from events
+#[derive(Debug, Clone)]
+struct SwapInfo {
+    pool_id: String,
+    sender: String,
+    token_in_type: String,
+    amount_in: u64,
+    amount_out: u64,
+    price_impact: u64, // in basis points
+}
+
+/// Token flow graph node
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct TokenType {
+    type_name: String,
+}
+
+/// Flash loan attack analyzer with sophisticated pattern detection
+pub struct FlashLoanAnalyzer {
+    // Thresholds for detection
+    min_swap_count: usize,
+    price_impact_threshold: u64,
+    high_price_impact_threshold: u64,
+}
 
 impl FlashLoanAnalyzer {
     pub fn new() -> Self {
-        Self
+        Self {
+            min_swap_count: 2,                  // Minimum swaps to be suspicious
+            price_impact_threshold: 500,        // 5% price impact
+            high_price_impact_threshold: 1000,  // 10% high impact
+        }
     }
 
+    /// Main analysis function implementing the multi-signal algorithm
     pub fn analyze(
         &self,
-        tx: &CheckpointTransaction,
+        tx: &ExecutedTransaction,
         context: &DetectionContext,
     ) -> Option<RiskEvent> {
-        if let Some(events) = &tx.events {
-            let has_flash_loan = events.data.iter().any(|event| {
-                event.type_.name.as_str() == "FlashLoanTaken"
-            });
+        // Step 1: Extract flash loan events
+        let flash_loan_info = self.extract_flash_loan_info(tx)?;
 
-            let has_flash_repay = events.data.iter().any(|event| {
-                event.type_.name.as_str() == "FlashLoanRepaid"
-            });
+        // Flash loan must be borrowed and repaid in same tx
+        if flash_loan_info.is_empty() {
+            return None;
+        }
 
-            let has_attack_executed = events.data.iter().any(|event| {
-                event.type_.name.as_str() == "FlashLoanAttackExecuted"
-            });
+        // Step 2: Extract swap events
+        let swaps = self.extract_swap_events(tx);
 
-            if has_flash_loan && has_flash_repay {
-                let risk_level = if has_attack_executed {
-                    RiskLevel::Critical
-                } else {
-                    RiskLevel::Medium
-                };
+        // If no swaps, it's just a flash loan (not an attack)
+        if swaps.is_empty() {
+            return None;
+        }
 
-                let mut event = RiskEvent::new(
-                    RiskType::FlashLoanAttack,
-                    risk_level,
-                    context.tx_digest.clone(),
-                    context.sender.clone(),
-                    context.checkpoint,
-                    context.timestamp_ms,
-                    format!("Flash loan usage detected"),
-                );
+        // Step 3: Analyze patterns
+        let circular_trading = self.detect_circular_trading(&swaps);
+        let unique_pools = self.count_unique_pools(&swaps);
+        let total_price_impact = self.calculate_total_price_impact(&swaps);
+        let max_single_impact = self.calculate_max_price_impact(&swaps);
 
-                if let Some(attack_event) = events.data.iter().find(|e| {
-                    e.type_.name.as_str() == "FlashLoanAttackExecuted"
-                }) {
-                    if let Ok(json) = serde_json::to_value(&attack_event.contents) {
-                        event = event
-                            .with_detail("borrowed_amount", json.get("borrowed_amount"))
-                            .with_detail("profit_amount", json.get("profit_amount"))
-                            .with_detail("attack_type", "arbitrage");
-                    }
+        // Step 4: Calculate risk score using weighted multi-signal approach
+        let mut risk_score = 0u32;
+
+        // Circular trading is highly suspicious
+        if circular_trading {
+            risk_score += 30;
+        }
+
+        // Multiple swaps indicate complex arbitrage
+        if swaps.len() >= 3 {
+            risk_score += 20;
+        } else if swaps.len() >= 2 {
+            risk_score += 10;
+        }
+
+        // High cumulative price impact
+        if total_price_impact > self.high_price_impact_threshold * 2 {
+            risk_score += 25;
+        } else if total_price_impact > self.high_price_impact_threshold {
+            risk_score += 15;
+        }
+
+        // Single high-impact swap
+        if max_single_impact > self.price_impact_threshold {
+            risk_score += 15;
+        }
+
+        // Multi-pool arbitrage
+        if unique_pools >= 3 {
+            risk_score += 15;
+        } else if unique_pools >= 2 {
+            risk_score += 10;
+        }
+
+        // Large flash loan amount (relative)
+        if flash_loan_info.iter().any(|fl| fl.amount > 1_000_000_000) {
+            risk_score += 10;
+        }
+
+        // Step 5: Classify risk level based on score
+        if risk_score < 30 {
+            // Below threshold, likely legitimate
+            return None;
+        }
+
+        let risk_level = match risk_score {
+            30..=49 => RiskLevel::Low,
+            50..=69 => RiskLevel::Medium,
+            70..=84 => RiskLevel::High,
+            _ => RiskLevel::Critical,
+        };
+
+        // Step 6: Create detailed risk event
+        let description = format!(
+            "Flash loan arbitrage detected: {} swaps across {} pools, {}% total price impact{}",
+            swaps.len(),
+            unique_pools,
+            total_price_impact / 100,
+            if circular_trading { ", circular trading pattern" } else { "" }
+        );
+
+        let mut event = RiskEvent::new(
+            RiskType::FlashLoanAttack,
+            risk_level,
+            context.tx_digest.clone(),
+            context.sender.clone(),
+            context.checkpoint,
+            context.timestamp_ms,
+            description,
+        );
+
+        // Add detailed metrics
+        event = event
+            .with_detail("flash_loan_count", serde_json::json!(flash_loan_info.len()))
+            .with_detail("total_borrowed", serde_json::json!(
+                flash_loan_info.iter().map(|fl| fl.amount).sum::<u64>()
+            ))
+            .with_detail("swap_count", serde_json::json!(swaps.len()))
+            .with_detail("unique_pools", serde_json::json!(unique_pools))
+            .with_detail("circular_trading", serde_json::json!(circular_trading))
+            .with_detail("total_price_impact_bps", serde_json::json!(total_price_impact))
+            .with_detail("max_price_impact_bps", serde_json::json!(max_single_impact))
+            .with_detail("risk_score", serde_json::json!(risk_score));
+
+        Some(event)
+    }
+
+    /// Extract flash loan information from events
+    fn extract_flash_loan_info(&self, tx: &ExecutedTransaction) -> Option<Vec<FlashLoanInfo>> {
+        let events = tx.events.as_ref()?;
+
+        let mut taken_loans: Vec<FlashLoanInfo> = Vec::new();
+        let mut repaid_count = 0;
+
+        for event in &events.data {
+            let event_name = event.type_.name.as_str();
+
+            if event_name == "FlashLoanTaken" {
+                // Parse flash loan taken event
+                if let Ok(json) = serde_json::to_value(&event.contents) {
+                    let pool_id = json.get("pool_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
+                    let amount = json.get("amount")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+
+                    let fee = json.get("fee")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+
+                    taken_loans.push(FlashLoanInfo {
+                        pool_id,
+                        amount,
+                        fee,
+                    });
                 }
-
-                return Some(event);
+            } else if event_name == "FlashLoanRepaid" {
+                repaid_count += 1;
             }
         }
 
-        None
+        // Flash loan attack requires both borrow and repay
+        if !taken_loans.is_empty() && repaid_count > 0 {
+            Some(taken_loans)
+        } else {
+            None
+        }
+    }
+
+    /// Extract swap events from transaction
+    fn extract_swap_events(&self, tx: &ExecutedTransaction) -> Vec<SwapInfo> {
+        let events = match &tx.events {
+            Some(e) => e,
+            None => return Vec::new(),
+        };
+
+        let mut swaps = Vec::new();
+
+        for event in &events.data {
+            if event.type_.name.as_str() == "SwapExecuted" {
+                if let Ok(json) = serde_json::to_value(&event.contents) {
+                    let pool_id = json.get("pool_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
+                    let sender = json.get("sender")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
+                    // Determine token type from event type parameters
+                    let token_in_type = event.type_.type_params.get(0)
+                        .map(|t| format!("{:?}", t))
+                        .unwrap_or_default();
+
+                    let amount_in = json.get("amount_in")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+
+                    let amount_out = json.get("amount_out")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+
+                    let price_impact = json.get("price_impact")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+
+                    swaps.push(SwapInfo {
+                        pool_id,
+                        sender,
+                        token_in_type,
+                        amount_in,
+                        amount_out,
+                        price_impact,
+                    });
+                }
+            }
+        }
+
+        swaps
+    }
+
+    /// Detect circular trading pattern (A → B → A)
+    fn detect_circular_trading(&self, swaps: &[SwapInfo]) -> bool {
+        if swaps.len() < 2 {
+            return false;
+        }
+
+        // Build token flow graph
+        let mut token_flow: Vec<String> = Vec::new();
+
+        for swap in swaps {
+            // Extract token types from pool swaps
+            // This is a simplified version - in reality you'd track actual token types
+            token_flow.push(swap.token_in_type.clone());
+        }
+
+        // Check if start token appears again (circular)
+        if token_flow.is_empty() {
+            return false;
+        }
+
+        let start_token = &token_flow[0];
+        token_flow[1..].contains(start_token)
+    }
+
+    /// Count unique pools touched
+    fn count_unique_pools(&self, swaps: &[SwapInfo]) -> usize {
+        let unique_pools: HashSet<&String> = swaps.iter()
+            .map(|swap| &swap.pool_id)
+            .collect();
+
+        unique_pools.len()
+    }
+
+    /// Calculate total price impact across all swaps
+    fn calculate_total_price_impact(&self, swaps: &[SwapInfo]) -> u64 {
+        swaps.iter()
+            .map(|swap| swap.price_impact)
+            .sum()
+    }
+
+    /// Calculate maximum single swap price impact
+    fn calculate_max_price_impact(&self, swaps: &[SwapInfo]) -> u64 {
+        swaps.iter()
+            .map(|swap| swap.price_impact)
+            .max()
+            .unwrap_or(0)
     }
 }
 
 impl Default for FlashLoanAnalyzer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_risk_scoring() {
+        let analyzer = FlashLoanAnalyzer::new();
+
+        // Test that thresholds are set correctly
+        assert_eq!(analyzer.min_swap_count, 2);
+        assert_eq!(analyzer.price_impact_threshold, 500);
+        assert_eq!(analyzer.high_price_impact_threshold, 1000);
+    }
+
+    #[test]
+    fn test_circular_trading_detection() {
+        let analyzer = FlashLoanAnalyzer::new();
+
+        let swaps = vec![
+            SwapInfo {
+                pool_id: "pool1".to_string(),
+                sender: "addr1".to_string(),
+                token_in_type: "USDC".to_string(),
+                amount_in: 1000,
+                amount_out: 1000,
+                price_impact: 100,
+            },
+            SwapInfo {
+                pool_id: "pool2".to_string(),
+                sender: "addr1".to_string(),
+                token_in_type: "USDT".to_string(),
+                amount_in: 1000,
+                amount_out: 1000,
+                price_impact: 100,
+            },
+            SwapInfo {
+                pool_id: "pool1".to_string(),
+                sender: "addr1".to_string(),
+                token_in_type: "USDC".to_string(), // Back to USDC - circular!
+                amount_in: 1000,
+                amount_out: 1000,
+                price_impact: 100,
+            },
+        ];
+
+        assert!(analyzer.detect_circular_trading(&swaps));
+    }
+
+    #[test]
+    fn test_unique_pool_counting() {
+        let analyzer = FlashLoanAnalyzer::new();
+
+        let swaps = vec![
+            SwapInfo {
+                pool_id: "pool1".to_string(),
+                sender: "addr1".to_string(),
+                token_in_type: "USDC".to_string(),
+                amount_in: 1000,
+                amount_out: 1000,
+                price_impact: 100,
+            },
+            SwapInfo {
+                pool_id: "pool2".to_string(),
+                sender: "addr1".to_string(),
+                token_in_type: "USDT".to_string(),
+                amount_in: 1000,
+                amount_out: 1000,
+                price_impact: 100,
+            },
+            SwapInfo {
+                pool_id: "pool1".to_string(), // Duplicate pool
+                sender: "addr1".to_string(),
+                token_in_type: "USDC".to_string(),
+                amount_in: 1000,
+                amount_out: 1000,
+                price_impact: 100,
+            },
+        ];
+
+        assert_eq!(analyzer.count_unique_pools(&swaps), 2);
     }
 }

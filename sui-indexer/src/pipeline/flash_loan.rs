@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sui_types::full_checkpoint_content::CheckpointTransaction;
+use sui_types::full_checkpoint_content::ExecutedTransaction;
 use crate::analyzer::FlashLoanAnalyzer;
 use crate::pipeline::RiskDetector;
 use crate::risk::{RiskEvent, DetectionContext};
@@ -24,10 +24,10 @@ impl RiskDetector for FlashLoanDetector {
 
     async fn detect(
         &self,
-        tx: &CheckpointTransaction,
+        tx: &ExecutedTransaction,
         context: &DetectionContext,
-    ) -> Option<RiskEvent> {
-        self.analyzer.analyze(tx, context)
+    ) -> Vec<RiskEvent> {
+        self.analyzer.analyze(tx, context).into_iter().collect()
     }
 }
 

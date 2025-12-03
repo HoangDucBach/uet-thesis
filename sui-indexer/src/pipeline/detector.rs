@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sui_types::full_checkpoint_content::CheckpointTransaction;
+use sui_types::full_checkpoint_content::{CheckpointTransaction, ExecutedTransaction};
 use crate::risk::{RiskEvent, DetectionContext};
 
 #[async_trait]
@@ -8,9 +8,9 @@ pub trait RiskDetector: Send + Sync {
 
     async fn detect(
         &self,
-        tx: &CheckpointTransaction,
+        tx: &ExecutedTransaction,
         context: &DetectionContext,
-    ) -> Option<RiskEvent>;
+    ) -> Vec<RiskEvent>;
 }
 
 pub struct DetectionPipeline {
@@ -31,15 +31,14 @@ impl DetectionPipeline {
 
     pub async fn run(
         &self,
-        tx: &CheckpointTransaction,
+        tx: &ExecutedTransaction,
         context: &DetectionContext,
     ) -> Vec<RiskEvent> {
         let mut events = Vec::new();
 
         for detector in &self.detectors {
-            if let Some(event) = detector.detect(tx, context).await {
-                events.push(event);
-            }
+            let detector_events = detector.detect(tx, context).await;
+            events.extend(detector_events);
         }
 
         events

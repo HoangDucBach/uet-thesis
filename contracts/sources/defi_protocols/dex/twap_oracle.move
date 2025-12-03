@@ -3,6 +3,7 @@
 module simulation::twap_oracle {
     use sui::clock::{Self, Clock};
     use sui::event;
+    use sui::vec_map::{Self, VecMap};
     use std::type_name::{Self, TypeName};
 
     // ============================================================================
@@ -240,8 +241,8 @@ module simulation::twap_oracle {
     /// Emit TWAP update with deviation detection
     fun emit_twap_update<TokenA, TokenB>(
         oracle: &TWAPOracle<TokenA, TokenB>,
-        _reserve_a: u64,
-        _reserve_b: u64,
+        reserve_a: u64,
+        reserve_b: u64,
         clock: &Clock,
     ) {
         let obs_count = vector::length(&oracle.observations);
@@ -268,8 +269,8 @@ module simulation::twap_oracle {
 
         event::emit(TWAPUpdated {
             pool_id: oracle.pool_id,
-            token_a: type_name::with_defining_ids<TokenA>(),
-            token_b: type_name::with_defining_ids<TokenB>(),
+            token_a: type_name::get<TokenA>(),
+            token_b: type_name::get<TokenB>(),
             twap_price_a: twap_a,
             twap_price_b: twap_b,
             spot_price_a: spot_a,
@@ -282,8 +283,8 @@ module simulation::twap_oracle {
         if (deviation_a > 1000) {
             event::emit(PriceDeviationDetected {
                 pool_id: oracle.pool_id,
-                token_a: type_name::with_defining_ids<TokenA>(),
-                token_b: type_name::with_defining_ids<TokenB>(),
+                token_a: type_name::get<TokenA>(),
+                token_b: type_name::get<TokenB>(),
                 twap_price: twap_a,
                 spot_price: spot_a,
                 deviation_bps: deviation_a,

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sui_types::full_checkpoint_content::CheckpointTransaction;
+use sui_types::full_checkpoint_content::ExecutedTransaction;
 use crate::analyzer::SandwichAnalyzer;
 use crate::pipeline::RiskDetector;
 use crate::risk::{RiskEvent, DetectionContext};
@@ -24,9 +24,9 @@ impl RiskDetector for SandwichDetector {
 
     async fn detect(
         &self,
-        tx: &CheckpointTransaction,
+        tx: &ExecutedTransaction,
         context: &DetectionContext,
-    ) -> Option<RiskEvent> {
+    ) -> Vec<RiskEvent> {
         self.analyzer.analyze(tx, context)
     }
 }

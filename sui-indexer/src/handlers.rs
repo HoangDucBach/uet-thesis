@@ -8,8 +8,8 @@ use sui_indexer_alt_framework::{
     postgres::{Connection, Db},
     pipeline::sequential::Handler,
 };
-use sui_types::full_checkpoint_content::Checkpoint;
-use sui_types::effects::TransactionEffectsAPI;
+use sui_types::full_checkpoint_content::{Checkpoint, CheckpointTransaction};
+use sui_types::effects::{TransactionEffectsAPI, TransactionEvents};
 use sui_types::transaction::TransactionDataAPI;
 
 use crate::models::{Transaction, EsFlattener, TransactionWithEs};
@@ -18,6 +18,11 @@ use crate::elasticsearch::SharedEsClient;
 use crate::pipeline::{DetectionPipeline, FlashLoanDetector, PriceManipulationDetector, SandwichDetector};
 use crate::action::{ActionPipeline, LogAction, AlertAction};
 use crate::risk::{DetectionContext, RiskLevel};
+use crate::constants::SIMULATION_PACKAGE_ID;
+
+// Type alias for the transaction type from checkpoint
+// Checkpoint.transactions yields ExecutedTransaction which is the same as CheckpointTransaction
+type TxType = CheckpointTransaction;
 
 pub struct TransactionHandler {
     es_client: SharedEsClient,
@@ -42,6 +47,21 @@ impl TransactionHandler {
             detection_pipeline,
             action_pipeline,
         }
+    }
+
+    /// Check if a transaction involves the target package ID
+    /// Returns true if any event emitted is from the target package
+    /// Currently checks events only (sufficient for our detection purposes)
+    fn involves_target_package(events: Option<&TransactionEvents>) -> bool {
+        if let Some(event_wrapper) = events {
+            for event in &event_wrapper.data {
+                let package_id = event.type_.address.to_string();
+                if package_id == SIMULATION_PACKAGE_ID {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -92,21 +112,24 @@ impl Processor for TransactionHandler {
                 &tx_digest,
             );
 
-            let context = DetectionContext::new(
-                tx_digest.clone(),
-                sender.clone(),
-                checkpoint_seq,
-                checkpoint_ts,
-            );
+            // Only run detection for transactions involving the target package
+            if Self::involves_target_package(tx.events.as_ref()) {
+                let context = DetectionContext::new(
+                    tx_digest.clone(),
+                    sender.clone(),
+                    checkpoint_seq,
+                    checkpoint_ts,
+                );
 
-            let risk_events = self.detection_pipeline.run(tx, &context).await;
+                let risk_events = self.detection_pipeline.run(tx, &context).await;
 
-            if !risk_events.is_empty() {
-                println!("🔍 Detected {} risk events in tx {}", risk_events.len(), &tx_digest[..8]);
-            }
+                if !risk_events.is_empty() {
+                    println!("🔍 Detected {} risk events in tx {}", risk_events.len(), &tx_digest[..8]);
+                }
 
-            for event in risk_events {
-                self.action_pipeline.execute(&event).await;
+                for event in risk_events {
+                    self.action_pipeline.run(&event).await;
+                }
             }
 
             txs.push(TransactionWithEs {
