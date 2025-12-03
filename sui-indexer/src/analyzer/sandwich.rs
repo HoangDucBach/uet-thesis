@@ -3,6 +3,7 @@
 
 use sui_types::full_checkpoint_content::CheckpointTransaction;
 use std::collections::VecDeque;
+use std::sync::Mutex;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
 
 /// Swap transaction pattern for sandwich detection
@@ -31,8 +32,8 @@ pub struct SandwichMatch {
 
 /// Sandwich attack analyzer with stateful transaction buffer
 pub struct SandwichAnalyzer {
-    // Circular buffer for recent transactions
-    transaction_buffer: VecDeque<SwapPattern>,
+    // Circular buffer for recent transactions (uses interior mutability with Mutex for thread-safety)
+    transaction_buffer: Mutex<VecDeque<SwapPattern>>,
     // Maximum buffer size
     max_buffer_size: usize,
     // Maximum checkpoint distance for matching
@@ -44,7 +45,7 @@ pub struct SandwichAnalyzer {
 impl SandwichAnalyzer {
     pub fn new() -> Self {
         Self {
-            transaction_buffer: VecDeque::with_capacity(100),
+            transaction_buffer: Mutex::new(VecDeque::with_capacity(100)),
             max_buffer_size: 100,
             max_checkpoint_distance: 5,  // Within 5 checkpoints
             min_price_impact: 100,        // 1% minimum impact
@@ -53,7 +54,7 @@ impl SandwichAnalyzer {
 
     /// Analyze transaction and detect sandwich patterns
     pub fn analyze(
-        &mut self,
+        &self,
         tx: &CheckpointTransaction,
         context: &DetectionContext,
     ) -> Vec<RiskEvent> {
@@ -148,8 +149,9 @@ impl SandwichAnalyzer {
 
     /// Find sandwich pattern: Front-run → [Victim] → Back-run (new_swap)
     fn find_sandwich_pattern(&self, back_run: &SwapPattern) -> Option<SandwichMatch> {
+        let buffer = self.transaction_buffer.lock().unwrap();
         // Look for front-run candidates (before current transaction)
-        let front_run_candidates: Vec<&SwapPattern> = self.transaction_buffer.iter()
+        let front_run_candidates: Vec<&SwapPattern> = buffer.iter()
             .filter(|s| {
                 // Same pool
                 s.pool_id == back_run.pool_id &&
@@ -166,7 +168,7 @@ impl SandwichAnalyzer {
 
         // For each front-run candidate, look for victim in between
         for front_run in front_run_candidates {
-            let victim_candidates: Vec<&SwapPattern> = self.transaction_buffer.iter()
+            let victim_candidates: Vec<&SwapPattern> = buffer.iter()
                 .filter(|s| {
                     // Same pool
                     s.pool_id == back_run.pool_id &&
@@ -226,16 +228,18 @@ impl SandwichAnalyzer {
     }
 
     /// Add swap pattern to buffer
-    fn add_to_buffer(&mut self, pattern: SwapPattern) {
-        if self.transaction_buffer.len() >= self.max_buffer_size {
-            self.transaction_buffer.pop_front(); // Remove oldest
+    fn add_to_buffer(&self, pattern: SwapPattern) {
+        let mut buffer = self.transaction_buffer.lock().unwrap();
+        if buffer.len() >= self.max_buffer_size {
+            buffer.pop_front(); // Remove oldest
         }
-        self.transaction_buffer.push_back(pattern);
+        buffer.push_back(pattern);
     }
 
     /// Remove old entries from buffer
-    fn cleanup_buffer(&mut self, current_checkpoint: i64) {
-        self.transaction_buffer.retain(|pattern| {
+    fn cleanup_buffer(&self, current_checkpoint: i64) {
+        let mut buffer = self.transaction_buffer.lock().unwrap();
+        buffer.retain(|pattern| {
             current_checkpoint - pattern.checkpoint <= self.max_checkpoint_distance * 2
         });
     }
@@ -314,7 +318,7 @@ impl SandwichAnalyzer {
 
     /// Get current buffer size (for monitoring)
     pub fn get_buffer_size(&self) -> usize {
-        self.transaction_buffer.len()
+        self.transaction_buffer.lock().unwrap().len()
     }
 }
 

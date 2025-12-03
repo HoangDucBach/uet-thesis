@@ -26,8 +26,8 @@ impl RiskDetector for FlashLoanDetector {
         &self,
         tx: &CheckpointTransaction,
         context: &DetectionContext,
-    ) -> Option<RiskEvent> {
-        self.analyzer.analyze(tx, context)
+    ) -> Vec<RiskEvent> {
+        self.analyzer.analyze(tx, context).into_iter().collect()
     }
 }
 

@@ -2,7 +2,7 @@
 // Flash Loan Attack Detection using Multi-Signal Pattern Analysis
 
 use sui_types::full_checkpoint_content::CheckpointTransaction;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
 
 /// Flash loan information extracted from events

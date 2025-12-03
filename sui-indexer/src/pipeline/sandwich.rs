@@ -26,7 +26,7 @@ impl RiskDetector for SandwichDetector {
         &self,
         tx: &CheckpointTransaction,
         context: &DetectionContext,
-    ) -> Option<RiskEvent> {
+    ) -> Vec<RiskEvent> {
         self.analyzer.analyze(tx, context)
     }
 }

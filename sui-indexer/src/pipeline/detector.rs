@@ -10,7 +10,7 @@ pub trait RiskDetector: Send + Sync {
         &self,
         tx: &CheckpointTransaction,
         context: &DetectionContext,
-    ) -> Option<RiskEvent>;
+    ) -> Vec<RiskEvent>;
 }
 
 pub struct DetectionPipeline {
@@ -37,9 +37,8 @@ impl DetectionPipeline {
         let mut events = Vec::new();
 
         for detector in &self.detectors {
-            if let Some(event) = detector.detect(tx, context).await {
-                events.push(event);
-            }
+            let detector_events = detector.detect(tx, context).await;
+            events.extend(detector_events);
         }
 
         events

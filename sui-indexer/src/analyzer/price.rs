@@ -138,7 +138,7 @@ impl PriceAnalyzer {
         };
 
         // Step 5: Create detailed risk event
-        let description = if let Some(twap) = &twap_info {
+        let description = if twap_info.is_some() {
             format!(
                 "Price manipulation: {}% price impact, {}% TWAP deviation (ratio: {:.1}% of pool)",
                 max_price_impact / 100,
