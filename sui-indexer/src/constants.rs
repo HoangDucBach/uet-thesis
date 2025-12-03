@@ -1,1 +1,1 @@
-pub const SIMULATION_PACKAGE_ID: &str = "0x0"; // TODO: Update after deployment
+pub const SIMULATION_PACKAGE_ID: &str = "0xd1a6b10d4c0966d1ccd3b4bde51a71508eaf960aa22a1c690f87b1a8556c3be0";

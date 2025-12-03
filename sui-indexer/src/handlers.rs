@@ -101,6 +101,10 @@ impl Processor for TransactionHandler {
 
             let risk_events = self.detection_pipeline.run(tx, &context).await;
 
+            if !risk_events.is_empty() {
+                println!("🔍 Detected {} risk events in tx {}", risk_events.len(), &tx_digest[..8]);
+            }
+
             for event in risk_events {
                 self.action_pipeline.execute(&event).await;
             }
