@@ -3,7 +3,9 @@ module simulation::simple_dex {
     use sui::coin::{Self, Coin};
     use sui::balance::{Self, Balance};
     use sui::event;
+    use sui::clock::Clock;
     use simulation::math_utils;
+    use simulation::twap_oracle::{Self, TWAPOracle};
 
     // ============================================================================
     // Constants & Errors
@@ -190,6 +192,44 @@ module simulation::simple_dex {
             reserve_b: balance::value(&pool.reserve_b),
             price_impact,
         });
+
+        token_a_out
+    }
+
+    /// Swap TokenA for TokenB with TWAP oracle update
+    public fun swap_a_to_b_with_twap<TokenA, TokenB>(
+        pool: &mut Pool<TokenA, TokenB>,
+        oracle: &mut TWAPOracle<TokenA, TokenB>,
+        token_a: Coin<TokenA>,
+        min_out: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): Coin<TokenB> {
+        // Execute swap
+        let token_b_out = swap_a_to_b(pool, token_a, min_out, ctx);
+
+        // Update TWAP oracle after swap
+        let (reserve_a, reserve_b) = get_reserves(pool);
+        twap_oracle::update_observation(oracle, reserve_a, reserve_b, clock);
+
+        token_b_out
+    }
+
+    /// Swap TokenB for TokenA with TWAP oracle update
+    public fun swap_b_to_a_with_twap<TokenA, TokenB>(
+        pool: &mut Pool<TokenA, TokenB>,
+        oracle: &mut TWAPOracle<TokenA, TokenB>,
+        token_b: Coin<TokenB>,
+        min_out: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): Coin<TokenA> {
+        // Execute swap
+        let token_a_out = swap_b_to_a(pool, token_b, min_out, ctx);
+
+        // Update TWAP oracle after swap
+        let (reserve_a, reserve_b) = get_reserves(pool);
+        twap_oracle::update_observation(oracle, reserve_a, reserve_b, clock);
 
         token_a_out
     }
