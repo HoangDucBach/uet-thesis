@@ -15,9 +15,9 @@ module simulation::usdc {
             6,
             b"USDC",
             b"USD Coin",
-            b"Test USDC for simulation",
+            b"USD Coin stablecoin",
             std::option::none(),
-            ctx
+            ctx,
         );
         transfer::public_freeze_object(metadata);
         transfer::public_transfer(treasury, ctx.sender());
@@ -43,9 +43,9 @@ module simulation::usdt {
             6,
             b"USDT",
             b"Tether USD",
-            b"Test USDT for simulation",
+            b"Tether USD stablecoin",
             std::option::none(),
-            ctx
+            ctx,
         );
         transfer::public_freeze_object(metadata);
         transfer::public_transfer(treasury, ctx.sender());
@@ -71,9 +71,9 @@ module simulation::weth {
             8,
             b"WETH",
             b"Wrapped ETH",
-            b"Test WETH for simulation",
+            b"Wrapped Ethereum",
             std::option::none(),
-            ctx
+            ctx,
         );
         transfer::public_freeze_object(metadata);
         transfer::public_transfer(treasury, ctx.sender());
@@ -99,9 +99,9 @@ module simulation::btc {
             8,
             b"BTC",
             b"Bitcoin",
-            b"Test BTC for simulation",
+            b"Wrapped Bitcoin",
             std::option::none(),
-            ctx
+            ctx,
         );
         transfer::public_freeze_object(metadata);
         transfer::public_transfer(treasury, ctx.sender());
@@ -127,9 +127,9 @@ module simulation::sui_coin {
             9,
             b"SUI",
             b"Sui Token",
-            b"Test SUI for simulation",
+            b"Sui native token",
             std::option::none(),
-            ctx
+            ctx,
         );
         transfer::public_freeze_object(metadata);
         transfer::public_transfer(treasury, ctx.sender());
@@ -140,4 +140,3 @@ module simulation::sui_coin {
         init(SUI_COIN {}, ctx);
     }
 }
-

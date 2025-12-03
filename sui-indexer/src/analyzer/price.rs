@@ -1,4 +1,4 @@
-use sui_types::full_checkpoint_content::ExecutedTransaction;
+use sui_types::full_checkpoint_content::CheckpointTransaction;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
 
 const CRITICAL_PRICE_CHANGE_THRESHOLD: u64 = 2000; // 20%
@@ -13,7 +13,7 @@ impl PriceAnalyzer {
 
     pub fn analyze(
         &self,
-        tx: &ExecutedTransaction,
+        tx: &CheckpointTransaction,
         context: &DetectionContext,
     ) -> Option<RiskEvent> {
         if let Some(events) = &tx.events {

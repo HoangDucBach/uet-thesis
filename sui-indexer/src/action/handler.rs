@@ -23,7 +23,7 @@ impl ActionPipeline {
         self
     }
 
-    pub async fn process(&self, event: &RiskEvent) {
+    pub async fn execute(&self, event: &RiskEvent) {
         for handler in &self.handlers {
             if let Err(e) = handler.handle(event).await {
                 eprintln!("⚠ Action handler error: {}", e);
