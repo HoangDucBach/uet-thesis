@@ -4,6 +4,7 @@
 use sui_types::full_checkpoint_content::ExecutedTransaction;
 use std::collections::HashSet;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
+use crate::events::{FlashLoanTakenEvent, FlashLoanRepaidEvent, SwapExecutedEvent};
 
 /// Flash loan information extracted from events
 #[derive(Debug, Clone)]
@@ -173,25 +174,13 @@ impl FlashLoanAnalyzer {
             let event_name = event.type_.name.as_str();
 
             if event_name == "FlashLoanTaken" {
-                // Parse flash loan taken event
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    let pool_id = json.get("pool_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-
-                    let amount = json.get("amount")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let fee = json.get("fee")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                if let Ok(parsed) = bcs::from_bytes::<FlashLoanTakenEvent>(&event.contents) {
+                    let pool_id = format!("0x{}", hex::encode(parsed.pool_id));
 
                     taken_loans.push(FlashLoanInfo {
                         pool_id,
-                        amount,
-                        fee,
+                        amount: parsed.amount,
+                        fee: parsed.fee,
                     });
                 }
             } else if event_name == "FlashLoanRepaid" {
@@ -218,41 +207,21 @@ impl FlashLoanAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "SwapExecuted" {
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    let pool_id = json.get("pool_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
+                if let Ok(parsed) = bcs::from_bytes::<SwapExecutedEvent>(&event.contents) {
+                    let pool_id = format!("0x{}", hex::encode(parsed.pool_id));
+                    let sender = format!("0x{}", hex::encode(parsed.sender));
 
-                    let sender = json.get("sender")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-
-                    // Determine token type from event type parameters
                     let token_in_type = event.type_.type_params.get(0)
                         .map(|t| format!("{:?}", t))
                         .unwrap_or_default();
-
-                    let amount_in = json.get("amount_in")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let amount_out = json.get("amount_out")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let price_impact = json.get("price_impact")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
 
                     swaps.push(SwapInfo {
                         pool_id,
                         sender,
                         token_in_type,
-                        amount_in,
-                        amount_out,
-                        price_impact,
+                        amount_in: parsed.amount_in,
+                        amount_out: parsed.amount_out,
+                        price_impact: parsed.price_impact,
                     });
                 }
             }

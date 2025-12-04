@@ -6,6 +6,7 @@ mod risk;
 mod analyzer;
 mod pipeline;
 mod action;
+mod events;
 pub mod schema;
 
 use handlers::TransactionHandler;
