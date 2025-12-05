@@ -63,6 +63,15 @@ public struct LiquidityAdded<phantom TokenA, phantom TokenB> has copy, drop {
     liquidity_minted: u64,
 }
 
+/// Liquidity removed event
+public struct LiquidityRemoved<phantom TokenA, phantom TokenB> has copy, drop {
+    pool_id: address,
+    provider: address,
+    amount_a: u64,
+    amount_b: u64,
+    liquidity_burned: u64,
+}
+
 // ============================================================================
 // Public Functions
 // ============================================================================
@@ -88,7 +97,7 @@ public fun create_pool<TokenA, TokenB>(
         id: object::new(ctx),
         reserve_a: coin::into_balance(token_a),
         reserve_b: coin::into_balance(token_b),
-        lp_supply: initial_liquidity,
+        lp_supply: initial_liquidity - minimum_liquidity,
         fee_rate: 30, // 0.3%
     };
 
@@ -309,6 +318,54 @@ public fun calculate_amount_out<TokenA, TokenB>(
 /// Get pool fee rate
 public fun get_fee_rate<TokenA, TokenB>(pool: &Pool<TokenA, TokenB>): u64 {
     pool.fee_rate
+}
+
+/// Remove liquidity from pool
+public fun remove_liquidity<TokenA, TokenB>(
+    pool: &mut Pool<TokenA, TokenB>,
+    lp_tokens: u64,  // Amount of LP tokens to burn
+    min_a: u64,      // Minimum TokenA to receive
+    min_b: u64,      // Minimum TokenB to receive
+    ctx: &mut TxContext,
+): (Coin<TokenA>, Coin<TokenB>) {
+    assert!(lp_tokens > 0, E_INVALID_AMOUNT);
+    assert!(lp_tokens <= pool.lp_supply, E_INSUFFICIENT_LIQUIDITY);
+    
+    let reserve_a = balance::value(&pool.reserve_a);
+    let reserve_b = balance::value(&pool.reserve_b);
+    
+    // Calculate proportional share
+    let amount_a = (lp_tokens as u128) * (reserve_a as u128) / (pool.lp_supply as u128);
+    let amount_b = (lp_tokens as u128) * (reserve_b as u128) / (pool.lp_supply as u128);
+    let amount_a = (amount_a as u64);
+    let amount_b = (amount_b as u64);
+    
+    // Slippage protection
+    assert!(amount_a >= min_a, E_SLIPPAGE_TOO_HIGH);
+    assert!(amount_b >= min_b, E_SLIPPAGE_TOO_HIGH);
+    
+    // Update pool state
+    pool.lp_supply = pool.lp_supply - lp_tokens;
+    
+    // Withdraw tokens
+    let token_a_out = coin::from_balance(
+        balance::split(&mut pool.reserve_a, amount_a),
+        ctx,
+    );
+    let token_b_out = coin::from_balance(
+        balance::split(&mut pool.reserve_b, amount_b),
+        ctx,
+    );
+    
+    event::emit(LiquidityRemoved<TokenA, TokenB> {
+        pool_id: object::uid_to_address(&pool.id),
+        provider: tx_context::sender(ctx),
+        amount_a,
+        amount_b,
+        liquidity_burned: lp_tokens,
+    });
+    
+    (token_a_out, token_b_out)
 }
 
 /// Get LP token supply

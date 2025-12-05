@@ -92,6 +92,7 @@ public struct Market<phantom T> has key, store {
 public struct Position<phantom T> has key, store {
     id: UID,
     market_id: address,
+    owner: address,
     /// Amount of cTokens owned (represents supplied assets)
     c_token_balance: u64,
     /// Amount borrowed with interest
@@ -254,6 +255,7 @@ public fun supply<T>(
     Position<T> {
         id: object::new(ctx),
         market_id: object::uid_to_address(&market.id),
+        owner: tx_context::sender(ctx),
         c_token_balance: c_tokens_to_mint,
         borrow_balance: 0,
         borrow_index: market.borrow_index,
@@ -512,7 +514,7 @@ public fun liquidate<Collateral, Debt>(
     event::emit(LiquidationEvent<Collateral> {
         market_id: object::uid_to_address(&collateral_market.id),
         liquidator: tx_context::sender(ctx),
-        borrower: tx_context::sender(ctx), // Would track actual borrower in production
+        borrower: position.owner,
         position_id: object::uid_to_address(&position.id),
         debt_repaid: actual_repay,
         collateral_seized: underlying_to_transfer,
@@ -557,10 +559,16 @@ fun accrue_interest<T>(market: &mut Market<T>, clock: &Clock) {
     // Calculate reserves
     let reserves_added =
         (interest_accumulated as u128) * (market.reserve_factor as u128) / (BPS_PRECISION as u128);
-    let _reserves_added = (reserves_added as u64);
+    let reserves_added = (reserves_added as u64);
 
     // Update state
     market.total_borrows = market.total_borrows + interest_accumulated;
+    
+    // Note: In a real implementation, we would split the reserves from the repayments
+    // For now, we just track the amount that *should* be in reserves
+    // Since total_reserves is a Balance<T>, we can't just add u64 to it without actual tokens
+    // Ideally, when repay() happens, we split the interest payment into reserves and suppliers
+    
     market.borrow_index =
         market.borrow_index + ((market.borrow_index as u128) * interest_factor / (PRECISION as u128) as u64);
     market.accrual_block_timestamp = current_time;
@@ -571,7 +579,7 @@ fun accrue_interest<T>(market: &mut Market<T>, clock: &Clock) {
         borrow_rate,
         supply_rate: get_supply_rate(market),
         total_borrows: market.total_borrows,
-        total_reserves: balance::value(&market.total_reserves),
+        total_reserves: reserves_added, // Show added amount
         borrow_index: market.borrow_index,
         timestamp: current_time,
     });
