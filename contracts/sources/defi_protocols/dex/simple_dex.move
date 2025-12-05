@@ -236,7 +236,7 @@ module simulation::simple_dex {
     }
 
     /// Add liquidity
-    public fun add_liquidity<TokenA, TokenB>(
+    entry fun add_liquidity<TokenA, TokenB>(
         pool: &mut Pool<TokenA, TokenB>,
         token_a: Coin<TokenA>,
         token_b: Coin<TokenB>,
