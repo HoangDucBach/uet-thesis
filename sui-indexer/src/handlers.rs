@@ -15,7 +15,7 @@ use sui_types::transaction::TransactionDataAPI;
 use crate::models::{Transaction, EsFlattener, TransactionWithEs};
 use crate::schema::transactions::dsl::transactions;
 use crate::elasticsearch::SharedEsClient;
-use crate::pipeline::{DetectionPipeline, FlashLoanDetector, PriceManipulationDetector, SandwichDetector};
+use crate::pipeline::{DetectionPipeline, FlashLoanDetector, PriceManipulationDetector, SandwichDetector, OracleManipulationDetector};
 use crate::action::{ActionPipeline, LogAction, AlertAction};
 use crate::risk::{DetectionContext, RiskLevel};
 use crate::constants::SIMULATION_PACKAGE_ID;
@@ -35,7 +35,8 @@ impl TransactionHandler {
         let detection_pipeline = DetectionPipeline::new()
             .add_detector(FlashLoanDetector::new())
             .add_detector(PriceManipulationDetector::new())
-            .add_detector(SandwichDetector::new());
+            .add_detector(SandwichDetector::new())
+            .add_detector(OracleManipulationDetector::new());
 
         let webhook_url = std::env::var("ALERT_WEBHOOK_URL").ok();
         let action_pipeline = ActionPipeline::new()
