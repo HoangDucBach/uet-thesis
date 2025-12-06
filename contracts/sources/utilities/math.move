@@ -72,9 +72,9 @@ public fun constant_product(reserve_a: u64, reserve_b: u64): u64 {
     reserve_a * reserve_b
 }
 
-/// Calculate square root using Babylonian method (simplified for u64)
+/// Calculate square root using Babylonian method (simplified for u128)
 /// For simulation purposes - not production-grade precision
-public fun sqrt(n: u64): u64 {
+public fun sqrt(n: u128): u64 {
     if (n == 0) {
         return 0
     };
@@ -88,5 +88,5 @@ public fun sqrt(n: u64): u64 {
         x = y;
         y = (x + n / x) / 2;
     };
-    x
+    (x as u64)
 }

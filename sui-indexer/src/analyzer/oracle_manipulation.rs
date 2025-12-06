@@ -313,7 +313,7 @@ impl OracleManipulationAnalyzer {
 
         // Reverse impact
         let impact_factor = 10000 + swap.price_impact;
-        ((current_price as u128 * 10000 / impact_factor as u128) as u64)
+        (current_price as u128 * 10000 / impact_factor as u128) as u64
     }
 }
 

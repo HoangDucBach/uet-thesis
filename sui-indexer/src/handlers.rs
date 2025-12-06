@@ -1,24 +1,25 @@
-use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
-use diesel_async::RunQueryDsl;
-use serde_json::{json, Value};
+use serde_json::json;
+use std::sync::Arc;
 use sui_indexer_alt_framework::{
+    pipeline::sequential::Handler,
     pipeline::Processor,
     postgres::{Connection, Db},
-    pipeline::sequential::Handler,
 };
-use sui_types::full_checkpoint_content::{Checkpoint, CheckpointTransaction};
 use sui_types::effects::{TransactionEffectsAPI, TransactionEvents};
+use sui_types::full_checkpoint_content::{Checkpoint, CheckpointTransaction};
 use sui_types::transaction::TransactionDataAPI;
 
-use crate::models::{Transaction, EsFlattener, TransactionWithEs};
-use crate::schema::transactions::dsl::transactions;
-use crate::elasticsearch::SharedEsClient;
-use crate::pipeline::{DetectionPipeline, FlashLoanDetector, PriceManipulationDetector, SandwichDetector, OracleManipulationDetector};
-use crate::action::{ActionPipeline, LogAction, AlertAction};
-use crate::risk::{DetectionContext, RiskLevel};
+use crate::action::{ActionPipeline, AlertAction, LogAction};
 use crate::constants::SIMULATION_PACKAGE_ID;
+use crate::elasticsearch::SharedEsClient;
+use crate::models::{EsFlattener, Transaction, TransactionWithEs};
+use crate::pipeline::{
+    DetectionPipeline, FlashLoanDetector, OracleManipulationDetector, PriceManipulationDetector,
+    SandwichDetector,
+};
+use crate::risk::{DetectionContext, RiskLevel};
 
 // Type alias for the transaction type from checkpoint
 // Checkpoint.transactions yields ExecutedTransaction which is the same as CheckpointTransaction
@@ -56,8 +57,9 @@ impl TransactionHandler {
     fn involves_target_package(events: Option<&TransactionEvents>) -> bool {
         if let Some(event_wrapper) = events {
             for event in &event_wrapper.data {
-                let package_id = event.type_.address.to_string();
+                let package_id: String = event.package_id.to_string();
                 if package_id == SIMULATION_PACKAGE_ID {
+                    println!("🔍 Target package transaction detected: {}", package_id);
                     return true;
                 }
             }
@@ -74,6 +76,8 @@ impl Processor for TransactionHandler {
     async fn process(&self, checkpoint: &Arc<Checkpoint>) -> Result<Vec<Self::Value>> {
         let checkpoint_seq = checkpoint.summary.sequence_number as i64;
         let checkpoint_ts = checkpoint.summary.timestamp_ms as i64;
+
+        println!("⏳ Processing checkpoint {}", checkpoint_seq);
 
         let mut txs = Vec::new();
 
@@ -115,6 +119,11 @@ impl Processor for TransactionHandler {
 
             // Only run detection for transactions involving the target package
             if Self::involves_target_package(tx.events.as_ref()) {
+                println!(
+                    "🎯 Target package transaction detected: {}",
+                    &tx_digest[..16]
+                );
+
                 let context = DetectionContext::new(
                     tx_digest.clone(),
                     sender.clone(),
@@ -125,7 +134,29 @@ impl Processor for TransactionHandler {
                 let risk_events = self.detection_pipeline.run(tx, &context).await;
 
                 if !risk_events.is_empty() {
-                    println!("🔍 Detected {} risk events in tx {}", risk_events.len(), &tx_digest[..8]);
+                    println!("╔════════════════════════════════════════════════════════════╗");
+                    println!(
+                        "║ 🚨 DETECTION ALERT - {} Risk Events Found",
+                        risk_events.len()
+                    );
+                    println!("╠════════════════════════════════════════════════════════════╣");
+                    println!("║ Transaction: {}", tx_digest);
+                    println!("║ Checkpoint:  {}", checkpoint_seq);
+                    println!("╚════════════════════════════════════════════════════════════╝");
+
+                    for (i, event) in risk_events.iter().enumerate() {
+                        println!("\n📋 Event {}/{}", i + 1, risk_events.len());
+                        println!("   Type:        {:?}", event.risk_type);
+                        println!("   Level:       {:?}", event.risk_level);
+                        println!("   Description: {}", event.description);
+                        if !event.details.is_empty() {
+                            println!(
+                                "   Details:     {}",
+                                serde_json::to_string_pretty(&event.details).unwrap_or_default()
+                            );
+                        }
+                    }
+                    println!("");
                 }
 
                 for event in risk_events {
@@ -152,17 +183,23 @@ impl Handler for TransactionHandler {
         batch.extend(values);
     }
 
-    async fn commit<'a>(
-        &self,
-        batch: &Self::Batch,
-        conn: &mut Connection<'a>,
-    ) -> Result<usize> {
-        use crate::schema::transactions::dsl::tx_digest;
+    async fn commit<'a>(&self, batch: &Self::Batch, _conn: &mut Connection<'a>) -> Result<usize> {
 
         if batch.is_empty() {
             return Ok(0);
         }
 
+        // ========================================================================
+        // 🔧 TEMPORARY: Database/ES storage DISABLED for detection testing
+        // ========================================================================
+
+        println!(
+            "📦 Processing batch of {} transactions (storage disabled)",
+            batch.len()
+        );
+
+        // TODO: Re-enable after detection testing
+        /*
         // 1. Extract DB transactions and insert into PostgreSQL
         let db_transactions: Vec<Transaction> = batch.iter()
             .map(|tx_with_es| tx_with_es.db_transaction.clone())
@@ -199,5 +236,9 @@ impl Handler for TransactionHandler {
         }
 
         Ok(inserted)
+        */
+
+        // Return batch size as "processed count" for testing
+        Ok(batch.len())
     }
 }

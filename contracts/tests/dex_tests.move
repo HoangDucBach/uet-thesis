@@ -72,9 +72,12 @@ module simulation::dex_tests {
             // Verify pool was created and is shared
             let pool = test::take_shared<Pool<USDC, USDT>>(&scenario);
             let (reserve_a, reserve_b) = simple_dex::get_reserves(&pool);
+            let lp_supply = simple_dex::get_lp_supply(&pool);
 
             assert!(reserve_a == INITIAL_LIQUIDITY, 0);
             assert!(reserve_b == INITIAL_LIQUIDITY, 1);
+            // Verify minimum liquidity burn (1000)
+            assert!(lp_supply == INITIAL_LIQUIDITY - 1000, 2);
 
             test::return_shared(pool);
         };
@@ -312,6 +315,55 @@ module simulation::dex_tests {
             assert!(reserve_a > INITIAL_LIQUIDITY, 0);
             assert!(reserve_b < INITIAL_LIQUIDITY, 1);
 
+            test::return_shared(pool);
+        };
+
+        test::end(scenario);
+    }
+
+    #[test]
+    /// Test: Remove liquidity from the pool
+    fun test_remove_liquidity() {
+        let mut scenario = test::begin(ADMIN);
+        setup_coins(&mut scenario);
+
+        // Create pool
+        test::next_tx(&mut scenario, ALICE);
+        {
+            let mut factory = test::take_shared<CoinFactory>(&scenario);
+            let usdc = coin_factory::mint_usdc(&mut factory, INITIAL_LIQUIDITY, test::ctx(&mut scenario));
+            let usdt = coin_factory::mint_usdt(&mut factory, INITIAL_LIQUIDITY, test::ctx(&mut scenario));
+            simple_dex::create_pool(usdc, usdt, test::ctx(&mut scenario));
+            test::return_shared(factory);
+        };
+
+        // Remove liquidity
+        test::next_tx(&mut scenario, ALICE);
+        {
+            let mut pool = test::take_shared<Pool<USDC, USDT>>(&scenario);
+            let lp_supply = simple_dex::get_lp_supply(&pool);
+            
+            // Remove 50% of remaining liquidity
+            let remove_amount = lp_supply / 2;
+            
+            let (usdc_out, usdt_out) = simple_dex::remove_liquidity(
+                &mut pool,
+                remove_amount,
+                0, // min_a
+                0, // min_b
+                test::ctx(&mut scenario)
+            );
+
+            // Verify amounts
+            assert!(coin::value(&usdc_out) > 0, 0);
+            assert!(coin::value(&usdt_out) > 0, 1);
+            
+            // Verify pool state updated
+            let new_lp_supply = simple_dex::get_lp_supply(&pool);
+            assert!(new_lp_supply == lp_supply - remove_amount, 2);
+
+            coin::burn_for_testing(usdc_out);
+            coin::burn_for_testing(usdt_out);
             test::return_shared(pool);
         };
 

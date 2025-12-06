@@ -1,8 +1,9 @@
 // Copyright (c) 2024 DeFi Protocol Indexer
 // Price Manipulation Detection using TWAP Deviation Analysis + Trade Impact Scoring
 
+use crate::risk::{DetectionContext, RiskEvent, RiskLevel, RiskType};
+use crate::events::{SwapExecuted, TWAPUpdated, EventParser};
 use sui_types::full_checkpoint_content::ExecutedTransaction;
-use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
 
 /// TWAP information from oracle update events
 #[derive(Debug, Clone)]
@@ -19,29 +20,29 @@ struct SwapImpact {
     pool_id: String,
     amount_in: u64,
     amount_out: u64,
-    price_impact: u64,      // Basis points
-    reserve_a: u64,         // After swap
-    reserve_b: u64,         // After swap
+    price_impact: u64, // Basis points
+    reserve_a: u64,    // After swap
+    reserve_b: u64,    // After swap
 }
 
 /// Price manipulation analyzer with TWAP deviation and impact scoring
 pub struct PriceAnalyzer {
     // Thresholds for detection
-    high_price_impact_threshold: u64,      // 10% (1000 bps)
-    critical_price_impact_threshold: u64,   // 20% (2000 bps)
-    twap_deviation_threshold: u64,          // 5% (500 bps)
-    high_twap_deviation_threshold: u64,     // 10% (1000 bps)
-    large_trade_ratio: f64,                 // 0.15 (15% of pool depth)
+    high_price_impact_threshold: u64,     // 10% (1000 bps)
+    critical_price_impact_threshold: u64, // 20% (2000 bps)
+    twap_deviation_threshold: u64,        // 5% (500 bps)
+    high_twap_deviation_threshold: u64,   // 10% (1000 bps)
+    large_trade_ratio: f64,               // 0.15 (15% of pool depth)
 }
 
 impl PriceAnalyzer {
     pub fn new() -> Self {
         Self {
-            high_price_impact_threshold: 1000,          // 10%
-            critical_price_impact_threshold: 2000,      // 20%
-            twap_deviation_threshold: 500,              // 5%
-            high_twap_deviation_threshold: 1000,        // 10%
-            large_trade_ratio: 0.15,                    // 15% of pool
+            high_price_impact_threshold: 1000,     // 10%
+            critical_price_impact_threshold: 2000, // 20%
+            twap_deviation_threshold: 500,         // 5%
+            high_twap_deviation_threshold: 1000,   // 10%
+            large_trade_ratio: 0.15,               // 15% of pool
         }
     }
 
@@ -70,10 +71,7 @@ impl PriceAnalyzer {
 
         // Signal 1: Direct price impact from swaps
         if !swaps.is_empty() {
-            max_price_impact = swaps.iter()
-                .map(|s| s.price_impact)
-                .max()
-                .unwrap_or(0);
+            max_price_impact = swaps.iter().map(|s| s.price_impact).max().unwrap_or(0);
 
             // Calculate swap-to-depth ratio
             for swap in &swaps {
@@ -167,7 +165,10 @@ impl PriceAnalyzer {
         event = event
             .with_detail("max_price_impact_bps", serde_json::json!(max_price_impact))
             .with_detail("swap_count", serde_json::json!(swaps.len()))
-            .with_detail("swap_to_depth_ratio", serde_json::json!(max_swap_to_depth_ratio))
+            .with_detail(
+                "swap_to_depth_ratio",
+                serde_json::json!(max_swap_to_depth_ratio),
+            )
             .with_detail("risk_score", serde_json::json!(risk_score));
 
         if let Some(twap) = twap_info {
@@ -187,29 +188,12 @@ impl PriceAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "TWAPUpdated" {
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    let pool_id = json.get("pool_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-
-                    let twap_price_a = json.get("twap_price_a")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let spot_price_a = json.get("spot_price_a")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let price_deviation = json.get("price_deviation")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
+                if let Some(parsed) = TWAPUpdated::from_event(event) {
                     return Some(TWAPInfo {
-                        pool_id,
-                        twap_price: twap_price_a,
-                        spot_price: spot_price_a,
-                        deviation_bps: price_deviation,
+                        pool_id: parsed.pool_id,
+                        twap_price: parsed.twap_price_a,
+                        spot_price: parsed.spot_price_a,
+                        deviation_bps: parsed.price_deviation,
                     });
                 }
             }
@@ -229,39 +213,14 @@ impl PriceAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "SwapExecuted" {
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    let pool_id = json.get("pool_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-
-                    let amount_in = json.get("amount_in")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let amount_out = json.get("amount_out")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let price_impact = json.get("price_impact")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let reserve_a = json.get("reserve_a")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let reserve_b = json.get("reserve_b")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
+                if let Some(parsed) = SwapExecuted::from_event(event) {
                     swaps.push(SwapImpact {
-                        pool_id,
-                        amount_in,
-                        amount_out,
-                        price_impact,
-                        reserve_a,
-                        reserve_b,
+                        pool_id: parsed.pool_id,
+                        amount_in: parsed.amount_in,
+                        amount_out: parsed.amount_out,
+                        price_impact: parsed.price_impact,
+                        reserve_a: parsed.reserve_a,
+                        reserve_b: parsed.reserve_b,
                     });
                 }
             }
@@ -273,9 +232,10 @@ impl PriceAnalyzer {
     /// Check if transaction has explicit PriceDeviationDetected event from oracle
     fn has_deviation_detected_event(&self, tx: &ExecutedTransaction) -> bool {
         if let Some(events) = &tx.events {
-            return events.data.iter().any(|e| {
-                e.type_.name.as_str() == "PriceDeviationDetected"
-            });
+            return events
+                .data
+                .iter()
+                .any(|e| e.type_.name.as_str() == "PriceDeviationDetected");
         }
         false
     }
@@ -290,9 +250,9 @@ impl PriceAnalyzer {
         let first_pool = &swaps[0].pool_id;
 
         // Simple heuristic: if all swaps have high price impact on same pool
-        swaps.iter().all(|s| {
-            s.pool_id == *first_pool && s.price_impact >= 100
-        })
+        swaps
+            .iter()
+            .all(|s| s.pool_id == *first_pool && s.price_impact >= 100)
     }
 }
 
