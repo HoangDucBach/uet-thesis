@@ -441,7 +441,7 @@ let risk_events = detection_pipeline.run(tx, &context).await;
 
 ```bash
 # Detection thresholds
-SIMULATION_PACKAGE_ID=0x18f41d08c00001b0295bcbd810e600354a84eb48bc534fbea47fa318257af7e2
+SIMULATION_PACKAGE_ID=0x0a78ed73edcaca699f8ffead05a9626aadd6edb30d49523574c8016806b0530e
 
 # Alert webhook (Slack/Discord)
 ALERT_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL

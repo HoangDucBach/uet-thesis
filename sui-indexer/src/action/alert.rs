@@ -33,6 +33,15 @@ impl AlertAction {
 
         event_priority >= min_priority
     }
+
+    fn get_color(&self, level: &RiskLevel) -> u32 {
+        match level {
+            RiskLevel::Critical => 0xFF0000, // Red
+            RiskLevel::High => 0xE67E22,     // Orange
+            RiskLevel::Medium => 0xF1C40F,   // Yellow
+            RiskLevel::Low => 0x3498DB,      // Blue
+        }
+    }
 }
 
 #[async_trait]
@@ -44,21 +53,54 @@ impl ActionHandler for AlertAction {
 
         if let Some(url) = &self.webhook_url {
             let client = reqwest::Client::new();
+            
+            // Format details as fields
+            let mut fields = vec![
+                serde_json::json!({
+                    "name": "Transaction",
+                    "value": format!("[View on Explorer](https://suiscan.xyz/testnet/tx/{})", event.tx_digest),
+                    "inline": true
+                }),
+                serde_json::json!({
+                    "name": "Sender",
+                    "value": format!("`{}`", event.sender),
+                    "inline": true
+                }),
+                serde_json::json!({
+                    "name": "Checkpoint",
+                    "value": event.checkpoint.to_string(),
+                    "inline": true
+                }),
+            ];
+
+            // Add specific details if available
+            for (key, value) in &event.details {
+                fields.push(serde_json::json!({
+                    "name": key,
+                    "value": format!("`{}`", value),
+                    "inline": false
+                }));
+            }
+
             let payload = serde_json::json!({
-                "risk_type": format!("{:?}", event.risk_type),
-                "risk_level": format!("{:?}", event.risk_level),
-                "description": event.description,
-                "tx_digest": event.tx_digest,
-                "sender": event.sender,
-                "checkpoint": event.checkpoint,
-                "timestamp_ms": event.timestamp_ms,
-                "details": event.details,
+                "username": "Sui Security Bot",
+                "avatar_url": "https://cryptologos.cc/logos/sui-sui-logo.png",
+                "embeds": [{
+                    "title": format!("🚨 {:?} Security Alert Detected!", event.risk_type),
+                    "description": event.description,
+                    "color": self.get_color(&event.risk_level),
+                    "fields": fields,
+                    "footer": {
+                        "text": format!("Risk Level: {:?}", event.risk_level)
+                    },
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }]
             });
 
-            client.post(url)
-                .json(&payload)
-                .send()
-                .await?;
+            match client.post(url).json(&payload).send().await {
+                Ok(_) => println!("✅ Alert sent to Discord"),
+                Err(e) => println!("❌ Failed to send alert to Discord: {}", e),
+            }
         }
 
         Ok(())

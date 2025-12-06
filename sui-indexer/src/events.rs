@@ -2,6 +2,7 @@
 // Strongly-typed event structures matching Move contract events
 
 use serde::{Deserialize, Serialize};
+use sui_types::base_types::{ObjectID, SuiAddress};
 
 // ============================================================================
 // DEX Events (simple_dex.move)
@@ -10,17 +11,17 @@ use serde::{Deserialize, Serialize};
 /// Pool creation event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoolCreated {
-    pub pool_id: String,
+    pub pool_id: ObjectID,
     pub initial_a: u64,
     pub initial_b: u64,
-    pub creator: String,
+    pub creator: SuiAddress,
 }
 
 /// Swap execution event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwapExecuted {
-    pub pool_id: String,
-    pub sender: String,
+    pub pool_id: ObjectID,
+    pub sender: SuiAddress,
     #[serde(rename = "token_in")]
     pub token_in: bool,  // true = TokenA in, false = TokenB in
     pub amount_in: u64,
@@ -34,8 +35,8 @@ pub struct SwapExecuted {
 /// Liquidity addition event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiquidityAdded {
-    pub pool_id: String,
-    pub provider: String,
+    pub pool_id: ObjectID,
+    pub provider: SuiAddress,
     pub amount_a: u64,
     pub amount_b: u64,
     pub liquidity_minted: u64,
@@ -48,8 +49,8 @@ pub struct LiquidityAdded {
 /// Flash loan borrowed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlashLoanTaken {
-    pub pool_id: String,
-    pub borrower: String,
+    pub pool_id: ObjectID,
+    pub borrower: SuiAddress,
     pub amount: u64,
     pub fee: u64,
 }
@@ -57,8 +58,8 @@ pub struct FlashLoanTaken {
 /// Flash loan repayment event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlashLoanRepaid {
-    pub pool_id: String,
-    pub borrower: String,
+    pub pool_id: ObjectID,
+    pub borrower: SuiAddress,
     pub amount: u64,
     pub fee: u64,
 }
@@ -70,7 +71,7 @@ pub struct FlashLoanRepaid {
 /// TWAP update event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TWAPUpdated {
-    pub pool_id: String,
+    pub pool_id: ObjectID,
     #[serde(rename = "token_a")]
     pub token_a: String,  // TypeName
     #[serde(rename = "token_b")]
@@ -86,7 +87,7 @@ pub struct TWAPUpdated {
 /// Price deviation detected event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceDeviationDetected {
-    pub pool_id: String,
+    pub pool_id: ObjectID,
     #[serde(rename = "token_a")]
     pub token_a: String,
     #[serde(rename = "token_b")]
@@ -104,8 +105,8 @@ pub struct PriceDeviationDetected {
 /// Supply to lending market event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SupplyEvent {
-    pub market_id: String,
-    pub supplier: String,
+    pub market_id: ObjectID,
+    pub supplier: SuiAddress,
     pub amount: u64,
     pub c_tokens_minted: u64,
     pub exchange_rate: u64,
@@ -115,9 +116,9 @@ pub struct SupplyEvent {
 /// Borrow from lending market event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BorrowEvent {
-    pub market_id: String,
-    pub borrower: String,
-    pub position_id: String,
+    pub market_id: ObjectID,
+    pub borrower: SuiAddress,
+    pub position_id: ObjectID,
     pub borrow_amount: u64,
     pub collateral_value: u64,
     pub oracle_price: u64,       // Price used from DEX oracle
@@ -129,9 +130,9 @@ pub struct BorrowEvent {
 /// Repay lending debt event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepayEvent {
-    pub market_id: String,
-    pub borrower: String,
-    pub position_id: String,
+    pub market_id: ObjectID,
+    pub borrower: SuiAddress,
+    pub position_id: ObjectID,
     pub repay_amount: u64,
     pub remaining_debt: u64,
     pub timestamp: u64,
@@ -140,10 +141,10 @@ pub struct RepayEvent {
 /// Liquidation event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiquidationEvent {
-    pub market_id: String,
-    pub liquidator: String,
-    pub borrower: String,
-    pub position_id: String,
+    pub market_id: ObjectID,
+    pub liquidator: SuiAddress,
+    pub borrower: SuiAddress,
+    pub position_id: ObjectID,
     pub debt_repaid: u64,
     pub collateral_seized: u64,
     pub liquidation_incentive: u64,
@@ -155,7 +156,7 @@ pub struct LiquidationEvent {
 /// Interest accrual event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccrueInterestEvent {
-    pub market_id: String,
+    pub market_id: ObjectID,
     pub borrow_rate: u64,
     pub supply_rate: u64,
     pub total_borrows: u64,
@@ -191,9 +192,13 @@ macro_rules! impl_event_parser {
                     return None;
                 }
 
-                serde_json::to_value(&event.contents)
-                    .ok()
-                    .and_then(|json| serde_json::from_value(json).ok())
+                match bcs::from_bytes(&event.contents) {
+                    Ok(parsed) => Some(parsed),
+                    Err(e) => {
+                        eprintln!("Failed to parse event {}: {}", Self::event_name(), e);
+                        None
+                    }
+                }
             }
         }
     };
@@ -343,19 +348,20 @@ mod tests {
 
     #[test]
     fn test_parsed_events_helpers() {
+        use std::str::FromStr;
         let mut parsed = ParsedEvents::default();
         assert!(!parsed.has_complete_flash_loan());
         assert!(!parsed.has_swaps());
 
         parsed.flash_loan_taken.push(FlashLoanTaken {
-            pool_id: "0x1".to_string(),
-            borrower: "0x2".to_string(),
+            pool_id: ObjectID::from_str("0x1").unwrap(),
+            borrower: SuiAddress::from_str("0x2").unwrap(),
             amount: 1000,
             fee: 10,
         });
         parsed.flash_loan_repaid.push(FlashLoanRepaid {
-            pool_id: "0x1".to_string(),
-            borrower: "0x2".to_string(),
+            pool_id: ObjectID::from_str("0x1").unwrap(),
+            borrower: SuiAddress::from_str("0x2").unwrap(),
             amount: 1000,
             fee: 10,
         });

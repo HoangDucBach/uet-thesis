@@ -5,6 +5,7 @@ use sui_types::full_checkpoint_content::ExecutedTransaction;
 use std::collections::VecDeque;
 use std::sync::Mutex;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
+use crate::events::{SwapExecuted, EventParser};
 
 /// Swap transaction pattern for sandwich detection
 #[derive(Debug, Clone)]
@@ -99,32 +100,13 @@ impl SandwichAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "SwapExecuted" {
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    let pool_id = json.get("pool_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-
-                    let sender = json.get("sender")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-
-                    let token_in = json.get("token_in")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-
-                    let amount_in = json.get("amount_in")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let amount_out = json.get("amount_out")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let price_impact = json.get("price_impact")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                if let Some(parsed) = SwapExecuted::from_event(event) {
+                    let pool_id = parsed.pool_id.to_string();
+                    let sender = parsed.sender.to_string();
+                    let token_in = parsed.token_in;
+                    let amount_in = parsed.amount_in;
+                    let amount_out = parsed.amount_out;
+                    let price_impact = parsed.price_impact;
 
                     // Only track swaps with significant price impact
                     if price_impact >= self.min_price_impact {

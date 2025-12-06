@@ -176,7 +176,7 @@ impl FlashLoanAnalyzer {
             if event_name == "FlashLoanTaken" {
                 if let Some(parsed) = FlashLoanTaken::from_event(event) {
                     taken_loans.push(FlashLoanInfo {
-                        pool_id: parsed.pool_id,
+                        pool_id: parsed.pool_id.to_string(),
                         amount: parsed.amount,
                         fee: parsed.fee,
                     });
@@ -211,8 +211,8 @@ impl FlashLoanAnalyzer {
                         .unwrap_or_default();
 
                     swaps.push(SwapInfo {
-                        pool_id: parsed.pool_id,
-                        sender: parsed.sender,
+                        pool_id: parsed.pool_id.to_string(),
+                        sender: parsed.sender.to_string(),
                         token_in_type,
                         amount_in: parsed.amount_in,
                         amount_out: parsed.amount_out,

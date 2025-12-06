@@ -328,7 +328,7 @@ return classify_by_score(score);
 
 ```bash
 # Target package to monitor
-SIMULATION_PACKAGE_ID=0xd1a6b10d4c0966d1ccd3b4bde51a71508eaf960aa22a1c690f87b1a8556c3be0
+SIMULATION_PACKAGE_ID=0x0a78ed73edcaca699f8ffead05a9626aadd6edb30d49523574c8016806b0530e
 
 # Alert webhook (Slack/Discord)
 ALERT_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL

@@ -11,7 +11,7 @@ use sui_types::effects::{TransactionEffectsAPI, TransactionEvents};
 use sui_types::full_checkpoint_content::{Checkpoint, CheckpointTransaction};
 use sui_types::transaction::TransactionDataAPI;
 
-use crate::action::{ActionPipeline, AlertAction, LogAction};
+use crate::action::{ActionPipeline, AlertAction, LogAction, MockDefenseAction};
 use crate::constants::SIMULATION_PACKAGE_ID;
 use crate::elasticsearch::SharedEsClient;
 use crate::models::{EsFlattener, Transaction, TransactionWithEs};
@@ -42,7 +42,8 @@ impl TransactionHandler {
         let webhook_url = std::env::var("ALERT_WEBHOOK_URL").ok();
         let action_pipeline = ActionPipeline::new()
             .add_handler(LogAction::new())
-            .add_handler(AlertAction::new(webhook_url, RiskLevel::High));
+            .add_handler(AlertAction::new(webhook_url, RiskLevel::Low))
+            .add_handler(MockDefenseAction::new(true));
 
         Self {
             es_client,

@@ -190,7 +190,7 @@ impl PriceAnalyzer {
             if event.type_.name.as_str() == "TWAPUpdated" {
                 if let Some(parsed) = TWAPUpdated::from_event(event) {
                     return Some(TWAPInfo {
-                        pool_id: parsed.pool_id,
+                        pool_id: parsed.pool_id.to_string(),
                         twap_price: parsed.twap_price_a,
                         spot_price: parsed.spot_price_a,
                         deviation_bps: parsed.price_deviation,
@@ -215,7 +215,7 @@ impl PriceAnalyzer {
             if event.type_.name.as_str() == "SwapExecuted" {
                 if let Some(parsed) = SwapExecuted::from_event(event) {
                     swaps.push(SwapImpact {
-                        pool_id: parsed.pool_id,
+                        pool_id: parsed.pool_id.to_string(),
                         amount_in: parsed.amount_in,
                         amount_out: parsed.amount_out,
                         price_impact: parsed.price_impact,

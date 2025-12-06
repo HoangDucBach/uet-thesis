@@ -3,6 +3,7 @@
 
 use sui_types::full_checkpoint_content::ExecutedTransaction;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
+use crate::events::{SwapExecuted, FlashLoanTaken, BorrowEvent, EventParser};
 
 /// Oracle manipulation analyzer
 ///
@@ -51,12 +52,12 @@ impl OracleManipulationAnalyzer {
 
         // Step 4: Temporal correlation analysis
         // Check if borrow happened AFTER price manipulation
-        let swap_timestamp = large_swaps[0].timestamp;
-        let borrow_timestamp = lending_borrows[0].timestamp;
+        // let swap_timestamp = large_swaps[0].timestamp;
+        // let borrow_timestamp = lending_borrows[0].timestamp;
 
-        if borrow_timestamp <= swap_timestamp {
-            return None;  // Borrow before swap, not manipulation
-        }
+        // if borrow_timestamp <= swap_timestamp {
+        //     return None;  // Borrow before swap, not manipulation
+        // }
 
         // Step 5: Price analysis
         let oracle_price = lending_borrows[0].oracle_price;
@@ -182,10 +183,8 @@ impl OracleManipulationAnalyzer {
 
             if event_name == "FlashLoanTaken" {
                 has_taken = true;
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    amount = json.get("amount")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                if let Some(parsed) = FlashLoanTaken::from_event(event) {
+                    amount = parsed.amount;
                 }
             }
 
@@ -210,22 +209,11 @@ impl OracleManipulationAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "SwapExecuted" {
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    let amount_in = json.get("amount_in")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let price_impact = json.get("price_impact")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let reserve_a = json.get("reserve_a")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let reserve_b = json.get("reserve_b")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                if let Some(parsed) = SwapExecuted::from_event(event) {
+                    let amount_in = parsed.amount_in;
+                    let price_impact = parsed.price_impact;
+                    let reserve_a = parsed.reserve_a;
+                    let reserve_b = parsed.reserve_b;
 
                     // Only track swaps with significant impact
                     if price_impact >= 500 {  // >= 5%
@@ -256,22 +244,11 @@ impl OracleManipulationAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "BorrowEvent" {
-                if let Ok(json) = serde_json::to_value(&event.contents) {
-                    let borrow_amount = json.get("borrow_amount")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let collateral_value = json.get("collateral_value")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let oracle_price = json.get("oracle_price")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-
-                    let health_factor = json.get("health_factor")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                if let Some(parsed) = BorrowEvent::from_event(event) {
+                    let borrow_amount = parsed.borrow_amount;
+                    let collateral_value = parsed.collateral_value;
+                    let oracle_price = parsed.oracle_price;
+                    let health_factor = parsed.health_factor;
 
                     if borrow_amount >= self.min_borrow_amount {
                         borrows.push(BorrowInfo {
