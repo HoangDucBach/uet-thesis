@@ -2,7 +2,7 @@
 // Price Manipulation Detection using TWAP Deviation Analysis + Trade Impact Scoring
 
 use crate::risk::{DetectionContext, RiskEvent, RiskLevel, RiskType};
-use crate::events::{SwapExecutedEvent, TWAPUpdatedEvent, PriceDeviationDetectedEvent};
+use crate::events::{SwapExecuted, TWAPUpdated, EventParser};
 use sui_types::full_checkpoint_content::ExecutedTransaction;
 
 /// TWAP information from oracle update events
@@ -188,11 +188,9 @@ impl PriceAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "TWAPUpdated" {
-                if let Ok(parsed) = bcs::from_bytes::<TWAPUpdatedEvent>(&event.contents) {
-                    let pool_id = format!("0x{}", hex::encode(parsed.pool_id));
-
+                if let Some(parsed) = TWAPUpdated::from_event(event) {
                     return Some(TWAPInfo {
-                        pool_id,
+                        pool_id: parsed.pool_id,
                         twap_price: parsed.twap_price_a,
                         spot_price: parsed.spot_price_a,
                         deviation_bps: parsed.price_deviation,
@@ -215,11 +213,9 @@ impl PriceAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "SwapExecuted" {
-                if let Ok(parsed) = bcs::from_bytes::<SwapExecutedEvent>(&event.contents) {
-                    let pool_id = format!("0x{}", hex::encode(parsed.pool_id));
-
+                if let Some(parsed) = SwapExecuted::from_event(event) {
                     swaps.push(SwapImpact {
-                        pool_id,
+                        pool_id: parsed.pool_id,
                         amount_in: parsed.amount_in,
                         amount_out: parsed.amount_out,
                         price_impact: parsed.price_impact,

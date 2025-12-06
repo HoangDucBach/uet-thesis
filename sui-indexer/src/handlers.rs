@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use diesel_async::RunQueryDsl;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::sync::Arc;
 use sui_indexer_alt_framework::{
     pipeline::sequential::Handler,
@@ -17,10 +16,10 @@ use crate::constants::SIMULATION_PACKAGE_ID;
 use crate::elasticsearch::SharedEsClient;
 use crate::models::{EsFlattener, Transaction, TransactionWithEs};
 use crate::pipeline::{
-    DetectionPipeline, FlashLoanDetector, PriceManipulationDetector, SandwichDetector,
+    DetectionPipeline, FlashLoanDetector, OracleManipulationDetector, PriceManipulationDetector,
+    SandwichDetector,
 };
 use crate::risk::{DetectionContext, RiskLevel};
-use crate::schema::transactions::dsl::transactions;
 
 // Type alias for the transaction type from checkpoint
 // Checkpoint.transactions yields ExecutedTransaction which is the same as CheckpointTransaction
@@ -37,7 +36,8 @@ impl TransactionHandler {
         let detection_pipeline = DetectionPipeline::new()
             .add_detector(FlashLoanDetector::new())
             .add_detector(PriceManipulationDetector::new())
-            .add_detector(SandwichDetector::new());
+            .add_detector(SandwichDetector::new())
+            .add_detector(OracleManipulationDetector::new());
 
         let webhook_url = std::env::var("ALERT_WEBHOOK_URL").ok();
         let action_pipeline = ActionPipeline::new()
@@ -183,8 +183,7 @@ impl Handler for TransactionHandler {
         batch.extend(values);
     }
 
-    async fn commit<'a>(&self, batch: &Self::Batch, conn: &mut Connection<'a>) -> Result<usize> {
-        use crate::schema::transactions::dsl::tx_digest;
+    async fn commit<'a>(&self, batch: &Self::Batch, _conn: &mut Connection<'a>) -> Result<usize> {
 
         if batch.is_empty() {
             return Ok(0);

@@ -6,7 +6,7 @@ mod risk;
 mod analyzer;
 mod pipeline;
 mod action;
-mod events;
+mod events;  // NEW: Strongly-typed event structs
 pub mod schema;
 
 use handlers::TransactionHandler;

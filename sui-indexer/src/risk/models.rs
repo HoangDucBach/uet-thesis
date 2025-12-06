@@ -14,6 +14,7 @@ pub enum RiskType {
     FlashLoanAttack,
     PriceManipulation,
     SandwichAttack,
+    OracleManipulation,  // NEW: Oracle manipulation via lending
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

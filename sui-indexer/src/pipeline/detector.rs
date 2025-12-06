@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sui_types::full_checkpoint_content::{CheckpointTransaction, ExecutedTransaction};
+use sui_types::full_checkpoint_content::ExecutedTransaction;
 use crate::risk::{RiskEvent, DetectionContext};
 
 #[async_trait]

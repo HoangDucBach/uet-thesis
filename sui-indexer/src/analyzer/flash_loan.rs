@@ -4,7 +4,7 @@
 use sui_types::full_checkpoint_content::ExecutedTransaction;
 use std::collections::HashSet;
 use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
-use crate::events::{FlashLoanTakenEvent, FlashLoanRepaidEvent, SwapExecutedEvent};
+use crate::events::{FlashLoanTaken, SwapExecuted, EventParser};
 
 /// Flash loan information extracted from events
 #[derive(Debug, Clone)]
@@ -174,11 +174,9 @@ impl FlashLoanAnalyzer {
             let event_name = event.type_.name.as_str();
 
             if event_name == "FlashLoanTaken" {
-                if let Ok(parsed) = bcs::from_bytes::<FlashLoanTakenEvent>(&event.contents) {
-                    let pool_id = format!("0x{}", hex::encode(parsed.pool_id));
-
+                if let Some(parsed) = FlashLoanTaken::from_event(event) {
                     taken_loans.push(FlashLoanInfo {
-                        pool_id,
+                        pool_id: parsed.pool_id,
                         amount: parsed.amount,
                         fee: parsed.fee,
                     });
@@ -207,17 +205,14 @@ impl FlashLoanAnalyzer {
 
         for event in &events.data {
             if event.type_.name.as_str() == "SwapExecuted" {
-                if let Ok(parsed) = bcs::from_bytes::<SwapExecutedEvent>(&event.contents) {
-                    let pool_id = format!("0x{}", hex::encode(parsed.pool_id));
-                    let sender = format!("0x{}", hex::encode(parsed.sender));
-
+                if let Some(parsed) = SwapExecuted::from_event(event) {
                     let token_in_type = event.type_.type_params.get(0)
                         .map(|t| format!("{:?}", t))
                         .unwrap_or_default();
 
                     swaps.push(SwapInfo {
-                        pool_id,
-                        sender,
+                        pool_id: parsed.pool_id,
+                        sender: parsed.sender,
                         token_in_type,
                         amount_in: parsed.amount_in,
                         amount_out: parsed.amount_out,
