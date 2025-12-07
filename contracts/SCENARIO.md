@@ -16,23 +16,23 @@ ATTACK_MARKET=$MARKET_USDC
 
 ## Scenario 1: Simple Supply & Borrow (Benign)
 
-**Description:** A normal user supplies collateral (USDC) and borrows a safe amount of WETH.
+**Description:** A normal user supplies collateral (WETH) and borrows a safe amount of USDC.
 **Expected Result:** Risk Score < 30 (Safe).
 
 ```bash
-MINT_AMOUNT=1000000000
-BORROW_AMOUNT=1000000
+MINT_AMOUNT=1000000000   # 10 WETH
+BORROW_AMOUNT=1000000    # 1 USDC
 
 sui client ptb \
-    --move-call "$PACKAGE_ID::coin_factory::mint_usdc" @$COIN_FACTORY_ID $MINT_AMOUNT \
-    --assign usdc_coin \
-    --move-call "$PACKAGE_ID::compound_market::supply<$USDC_TYPE>" \
-        @$MARKET_USDC usdc_coin @0x6 \
+    --move-call "$PACKAGE_ID::coin_factory::mint_weth" @$COIN_FACTORY_ID $MINT_AMOUNT \
+    --assign weth_coin \
+    --move-call "$PACKAGE_ID::compound_market::supply<$WETH_TYPE>" \
+        @$MARKET_WETH weth_coin @0x6 \
     --assign position \
-    --move-call "$PACKAGE_ID::compound_market::borrow<$USDC_TYPE, $WETH_TYPE>" \
-        @$MARKET_USDC @$MARKET_WETH position @$DEX_POOL_WETH_USDC $BORROW_AMOUNT @0x6 \
-    --assign weth_loan \
-    --transfer-objects "[position, weth_loan]" @$ATTACKER \
+    --move-call "$PACKAGE_ID::compound_market::borrow<$WETH_TYPE, $USDC_TYPE>" \
+        @$MARKET_WETH @$MARKET_USDC position @$DEX_POOL_WETH_USDC $BORROW_AMOUNT @0x6 \
+    --assign usdc_loan \
+    --transfer-objects "[position, usdc_loan]" @$ATTACKER \
     --gas-budget 50000000 --json
 ```
 
