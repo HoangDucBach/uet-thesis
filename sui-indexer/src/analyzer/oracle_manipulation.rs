@@ -1,9 +1,9 @@
 // Copyright (c) 2024 DeFi Protocol Indexer
 // Oracle Manipulation Attack Detection via Lending Protocol Exploitation
 
+use crate::events::{BorrowEvent, EventParser, FlashLoanTaken, SwapExecuted};
+use crate::risk::{DetectionContext, RiskEvent, RiskLevel, RiskType};
 use sui_types::full_checkpoint_content::ExecutedTransaction;
-use crate::risk::{RiskEvent, RiskLevel, RiskType, DetectionContext};
-use crate::events::{SwapExecuted, FlashLoanTaken, BorrowEvent, EventParser};
 
 /// Oracle manipulation analyzer
 ///
@@ -24,8 +24,8 @@ pub struct OracleManipulationAnalyzer {
 impl OracleManipulationAnalyzer {
     pub fn new() -> Self {
         Self {
-            min_price_deviation: 1000,  // 10% price deviation
-            min_borrow_amount: 100_000_000,  // 100 tokens minimum
+            min_price_deviation: 1000,      // 10% price deviation
+            min_borrow_amount: 100_000_000, // 100 tokens minimum
         }
     }
 
@@ -83,7 +83,8 @@ impl OracleManipulationAnalyzer {
         let borrow_amount = lending_borrows[0].borrow_amount;
 
         // Estimate protocol loss if price returns to normal
-        let real_collateral_value = (collateral_value as u128 * normal_price as u128 / oracle_price as u128) as u64;
+        let real_collateral_value =
+            (collateral_value as u128 * normal_price as u128 / oracle_price as u128) as u64;
         let protocol_loss = if borrow_amount > real_collateral_value {
             borrow_amount - real_collateral_value
         } else {
@@ -97,23 +98,29 @@ impl OracleManipulationAnalyzer {
         risk_score += 20;
 
         // Price deviation scoring
-        if price_deviation >= 5000 {  // 50%+
+        if price_deviation >= 5000 {
+            // 50%+
             risk_score += 40;
-        } else if price_deviation >= 2000 {  // 20%+
+        } else if price_deviation >= 2000 {
+            // 20%+
             risk_score += 30;
-        } else if price_deviation >= 1000 {  // 10%+
+        } else if price_deviation >= 1000 {
+            // 10%+
             risk_score += 20;
         }
 
         // Borrow amount scoring
-        if borrow_amount > 10_000_000_000 {  // > 10k tokens
+        if borrow_amount > 10_000_000_000 {
+            // > 10k tokens
             risk_score += 20;
-        } else if borrow_amount > 1_000_000_000 {  // > 1k tokens
+        } else if borrow_amount > 1_000_000_000 {
+            // > 1k tokens
             risk_score += 15;
         }
 
         // Protocol loss scoring
-        if protocol_loss > borrow_amount / 2 {  // > 50% loss
+        if protocol_loss > borrow_amount / 2 {
+            // > 50% loss
             risk_score += 20;
         } else if protocol_loss > 0 {
             risk_score += 10;
@@ -121,13 +128,14 @@ impl OracleManipulationAnalyzer {
 
         // Health factor analysis
         let health_factor = lending_borrows[0].health_factor;
-        if health_factor > 15000 {  // Abnormally high (1.5x)
+        if health_factor > 15000 {
+            // Abnormally high (1.5x)
             risk_score += 10;
         }
 
         // Classify
         if risk_score < 40 {
-            return None;  // Below threshold
+            return None; // Below threshold
         }
 
         let risk_level = match risk_score {
@@ -156,14 +164,20 @@ impl OracleManipulationAnalyzer {
 
         // Add details
         event = event
-            .with_detail("flash_loan_amount", serde_json::json!(flash_loan_info.amount))
+            .with_detail(
+                "flash_loan_amount",
+                serde_json::json!(flash_loan_info.amount),
+            )
             .with_detail("swap_count", serde_json::json!(large_swaps.len()))
             .with_detail("oracle_price", serde_json::json!(oracle_price))
             .with_detail("normal_price", serde_json::json!(normal_price))
             .with_detail("price_deviation_bps", serde_json::json!(price_deviation))
             .with_detail("borrow_amount", serde_json::json!(borrow_amount))
             .with_detail("collateral_value", serde_json::json!(collateral_value))
-            .with_detail("real_collateral_value", serde_json::json!(real_collateral_value))
+            .with_detail(
+                "real_collateral_value",
+                serde_json::json!(real_collateral_value),
+            )
             .with_detail("protocol_loss", serde_json::json!(protocol_loss))
             .with_detail("health_factor", serde_json::json!(health_factor))
             .with_detail("risk_score", serde_json::json!(risk_score));
@@ -211,19 +225,24 @@ impl OracleManipulationAnalyzer {
             if event.type_.name.as_str() == "SwapExecuted" {
                 if let Some(parsed) = SwapExecuted::from_event(event) {
                     let amount_in = parsed.amount_in;
+                    let amount_out = parsed.amount_out;
+                    let token_in = parsed.token_in;
                     let price_impact = parsed.price_impact;
                     let reserve_a = parsed.reserve_a;
                     let reserve_b = parsed.reserve_b;
 
                     // Only track swaps with significant impact
-                    if price_impact >= 500 {  // >= 5%
+                    if price_impact >= 500 {
+                        // >= 5%
                         swaps.push(SwapInfo {
+                            token_in,
                             amount_in,
+                            amount_out,
                             price_impact,
-                            reserve_a_before: 0,  // Would need to track
+                            reserve_a_before: 0, // Would need to track
                             reserve_a_after: reserve_a,
                             reserve_b_after: reserve_b,
-                            timestamp: 0,  // Would come from event
+                            timestamp: 0, // Would come from event
                         });
                     }
                 }
@@ -256,7 +275,7 @@ impl OracleManipulationAnalyzer {
                             collateral_value,
                             oracle_price,
                             health_factor,
-                            timestamp: 0,  // Would come from event
+                            timestamp: 0, // Would come from event
                         });
                     }
                 }
@@ -272,25 +291,35 @@ impl OracleManipulationAnalyzer {
             return 0;
         }
 
-        // Use the first swap's post-state as baseline
-        // In reality, would track pre-swap state
+        // Lấy swap đầu tiên làm căn cứ
         let swap = &swaps[0];
 
-        // Simple heuristic: reverse the price impact
-        // normal_price = current_price / (1 + impact)
-        let current_price = if swap.reserve_a_after > 0 {
-            (swap.reserve_b_after as u128 * 1_000_000_000 / swap.reserve_a_after as u128) as u64
+        let (reserve_a_pre, reserve_b_pre) = if swap.token_in {
+            (
+                swap.reserve_a_after
+                    .checked_sub(swap.amount_in)
+                    .unwrap_or(0),
+                swap.reserve_b_after
+                    .checked_add(swap.amount_out)
+                    .unwrap_or(0),
+            )
         } else {
-            0
+            // B -> A
+            (
+                swap.reserve_a_after
+                    .checked_add(swap.amount_out)
+                    .unwrap_or(0),
+                swap.reserve_b_after
+                    .checked_sub(swap.amount_in)
+                    .unwrap_or(0),
+            )
         };
 
-        if current_price == 0 {
+        if reserve_a_pre == 0 {
             return 0;
         }
 
-        // Reverse impact
-        let impact_factor = 10000 + swap.price_impact;
-        (current_price as u128 * 10000 / impact_factor as u128) as u64
+        (reserve_b_pre as u128 * 1_000_000_000 / reserve_a_pre as u128) as u64
     }
 }
 
@@ -311,7 +340,9 @@ struct FlashLoanInfo {
 
 #[derive(Debug, Clone)]
 struct SwapInfo {
+    token_in: bool,
     amount_in: u64,
+    amount_out: u64,
     price_impact: u64,
     reserve_a_before: u64,
     reserve_a_after: u64,
@@ -344,17 +375,24 @@ mod tests {
         let analyzer = OracleManipulationAnalyzer::new();
 
         let swaps = vec![SwapInfo {
-            amount_in: 1000000,
-            price_impact: 2000,  // 20%
+            token_in: false,           // B -> A (Price increases)
+            amount_in: 40_000_000_000, // Input B
+            amount_out: 20_000_000,    // Output A
+            price_impact: 2000,        // 20%
             reserve_a_before: 0,
             reserve_a_after: 100_000_000,
-            reserve_b_after: 240_000_000_000,  // Price: 2400
+            reserve_b_after: 240_000_000_000, // Price: 2400
             timestamp: 0,
         }];
 
+        // Pre-swap state:
+        // Reserve A = 100M + 20M = 120M
+        // Reserve B = 240B - 40B = 200B
+        // Normal Price = 200B / 120M = 1666.66
+
         let normal_price = analyzer.estimate_normal_price(&swaps);
 
-        // Should be ~2000 (2400 / 1.2)
-        assert!(normal_price > 1900_000_000 && normal_price < 2100_000_000);
+        // Should be around 1666
+        assert!(normal_price > 1600_000_000 && normal_price < 1700_000_000);
     }
 }
