@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# ============================================================================
-# Scenario D: Oracle Manipulation Attack (CRITICAL)
-# ============================================================================
-
 set -e
 
 # Load environment
@@ -17,11 +13,6 @@ WETH_TYPE="$PACKAGE_ID::weth::WETH"
 ATTACK_DEX_POOL=$DEX_POOL_WETH_USDC
 ATTACK_MARKET=$MARKET_USDC
 
-# ============================================================================
-# STEP 2: Execute Oracle Manipulation Attack (Single PTB)
-# ============================================================================
-
-# Amounts
 FLASH_LOAN_AMOUNT=2500000000000  # 2,500,000 USDC (6 decimals)
 SWAP_AMOUNT=2000000000000        # 2,000,000 USDC
 SUPPLY_AMOUNT=1000000000         # 10 WETH (8 decimals)
