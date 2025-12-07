@@ -1,732 +1,617 @@
 #!/usr/bin/env python3
 """
-Generate DeFi transaction data focused on BEHAVIORAL PATTERN DETECTION
-For Elasticsearch time-series analysis and long-term suspicious activity detection
+Behavioral Pattern Data Generator for Elasticsearch Testing
 
-Focus on:
-- Wash Trading (fake volume)
-- Money Laundering (layering, structuring)
-- Circular Fund Flows
-- High Frequency Manipulation
-- Coordinated Attacks
-- Suspicious Address Relationships
+Generates realistic DeFi transaction data that follows the actual sui-indexer
+Elasticsearch document structure. Behavioral patterns (wash trading, money
+laundering, etc.) are HIDDEN in the normal-looking transaction sequences.
+
+NO explicit behavior tags - patterns must be detected through ELK queries
+analyzing transaction sequences, amounts, timing, and address relationships.
 """
 
 import json
 import random
 import hashlib
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Set, Tuple
+from typing import List, Dict, Any, Tuple
+from dataclasses import dataclass
+import os
 
-# ============================================================================
-# CONSTANTS
-# ============================================================================
+# Load contract addresses from .env
+def load_env_vars():
+    env_path = os.path.join(os.path.dirname(__file__), '..', 'contracts', '.env')
+    env_vars = {}
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key.strip()] = value.strip()
+    return env_vars
 
-PACKAGE_ID = "0x0a78ed73edcaca699f8ffead05a9626aadd6edb30d49523574c8016806b0530e"
+ENV = load_env_vars()
 
-# Pool IDs
-FLASH_LOAN_POOL_USDC = "0xd8c8d2282cc2b2990b4e39709684ef9cfd9fe18a56167d0e32134d90d1e6892b"
-DEX_POOL_USDC_USDT = "0xcd7c37355a73ace339b03847c860a43797a06cd675f051831562e39e2d4ba14e"
-DEX_POOL_USDT_WETH = "0x14a22a54906f8efb546c5f01bcf0220cebbf3b36fc6a124edcefe01977eaed84"
-DEX_POOL_WETH_USDC = "0x9e8326e5cf8b5ccb07f9c8bd39f4a9f95bc7b51f8ea8d70fdea0eb3f4ad92314"
+# Contract addresses
+PACKAGE_ID = ENV.get('PACKAGE_ID', '0x0a78ed73edcaca699f8ffead05a9626aadd6edb30d49523574c8016806b0530e')
+FLASH_LOAN_POOL_USDC = ENV.get('FLASH_LOAN_POOL_USDC', '0xd8c8d2282cc2b2990b4e39709684ef9cfd9fe18a56167d0e32134d90d1e6892b')
+DEX_POOL_USDC_USDT = ENV.get('DEX_POOL_USDC_USDT', '0xcd7c37355a73ace339b03847c860a43797a06cd675f051831562e39e2d4ba14e')
+DEX_POOL_BTC_USDC = ENV.get('DEX_POOL_BTC_USDC', '0x123')  # Fallback if not in .env
 
-# ============================================================================
-# ADDRESS POOLS
-# ============================================================================
-
-# Money laundering ring (connected addresses)
-LAUNDERING_RING = [
-    f"0x{i:040x}" for i in range(0xAA00, 0xAA15)  # 21 addresses
+POOLS = [
+    DEX_POOL_USDC_USDT,
+    DEX_POOL_BTC_USDC,
+    FLASH_LOAN_POOL_USDC,
 ]
 
-# Wash trading pairs
-WASH_TRADING_PAIRS = [
-    (f"0x{i:040x}", f"0x{i+1000:040x}")
-    for i in range(0xBB00, 0xBB10)  # 16 addresses (8 pairs)
-]
+# Address generation
+def generate_address(seed: str = None) -> str:
+    """Generate a Sui address (32 bytes = 64 hex chars with 0x prefix)"""
+    if seed:
+        hash_obj = hashlib.sha256(seed.encode())
+        return '0x' + hash_obj.hexdigest()[:64]
+    else:
+        return '0x' + ''.join(random.choices('0123456789abcdef', k=64))
 
-# Normal users
-NORMAL_USERS = [
-    f"0x{i:040x}" for i in range(0xCC00, 0xCC50)  # 80 users
-]
+def generate_tx_digest(seed: str = None) -> str:
+    """Generate a transaction digest"""
+    if seed:
+        hash_obj = hashlib.sha256(seed.encode())
+        return hash_obj.hexdigest()
+    else:
+        return hashlib.sha256(str(random.random()).encode()).hexdigest()
 
-# High frequency traders
-HFT_BOTS = [
-    f"0x{i:040x}" for i in range(0xDD00, 0xDD05)  # 5 HFT bots
-]
+# Global state for realistic data
+START_TIME = datetime.now() - timedelta(hours=2)
+START_CHECKPOINT = 1000000
+current_timestamp = START_TIME
+current_checkpoint = START_CHECKPOINT
 
-# Coordinated attack group
-ATTACK_GROUP = [
-    f"0x{i:040x}" for i in range(0xEE00, 0xEE08)  # 8 attackers
-]
+def advance_time(seconds: int):
+    """Advance global timestamp"""
+    global current_timestamp, current_checkpoint
+    current_timestamp += timedelta(seconds=seconds)
+    current_checkpoint += random.randint(1, 3)
 
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
+def get_current_time_ms() -> int:
+    """Get current timestamp in milliseconds"""
+    return int(current_timestamp.timestamp() * 1000)
 
-def generate_tx_digest() -> str:
-    """Generate realistic transaction digest"""
-    return hashlib.sha256(random.randbytes(32)).hexdigest()
+# =============================================================================
+# EsTransaction Structure (matches sui-indexer)
+# =============================================================================
 
-def generate_checkpoint(base: int = 10000000) -> int:
-    """Generate checkpoint number"""
-    return base + random.randint(0, 100000)
-
-# ============================================================================
-# BEHAVIORAL PATTERN GENERATORS
-# ============================================================================
-
-def generate_wash_trading_sequence(pair_index: int = 0, duration_minutes: int = 30) -> List[Dict[str, Any]]:
+def create_es_transaction(
+    sender: str,
+    events: List[Dict[str, Any]],
+    move_calls: List[Dict[str, Any]],
+    is_flash_loan: bool = False
+) -> Dict[str, Any]:
     """
-    Generate wash trading pattern: two addresses trading back and forth
-    to create fake volume and manipulate price discovery
+    Create an Elasticsearch transaction document matching the actual indexer structure
 
-    Pattern:
-    - Address A sells to Address B
-    - Address B sells back to Address A
-    - Repeat 10-30 times within 30 minutes
-    - Same amounts, minimal price impact
-    - No real economic benefit, just volume
+    Structure matches EsTransaction from sui-indexer/src/models/es_transaction.rs
     """
+    tx_digest = generate_tx_digest(f"{sender}_{get_current_time_ms()}")
 
-    addr_a, addr_b = WASH_TRADING_PAIRS[pair_index % len(WASH_TRADING_PAIRS)]
-    pool_id = random.choice([DEX_POOL_USDC_USDT, DEX_POOL_WETH_USDC])
+    # Extract packages/modules/functions from move_calls
+    packages = list(set(call['package'] for call in move_calls))
+    modules = list(set(call['module'] for call in move_calls))
+    functions = list(set(call['function'] for call in move_calls))
 
-    base_time = datetime.now() - timedelta(minutes=random.randint(0, 1000))
-    base_checkpoint = generate_checkpoint()
+    return {
+        "tx_digest": tx_digest,
+        "checkpoint_sequence_number": current_checkpoint,
+        "timestamp_ms": current_timestamp.isoformat() + "Z",
+        "sender": sender,
+        "execution_status": "success",
+        "kind": "ProgrammableTransaction",
+        "is_system_tx": False,
+        "is_sponsored_tx": False,
+        "is_end_of_epoch_tx": False,
 
-    transactions = []
-    num_rounds = random.randint(10, 30)  # 10-30 back and forth trades
-    trade_amount = random.randint(1_000_000_000, 5_000_000_000)  # Fixed amount
+        "gas": {
+            "owner": sender,
+            "budget": 10000000,
+            "price": 1000,
+            "used": random.randint(500000, 2000000),
+            "computation_cost": random.randint(300000, 1000000),
+            "storage_cost": random.randint(100000, 500000),
+            "storage_rebate": random.randint(50000, 200000),
+        },
 
-    reserve_a = 100_000_000_000
-    reserve_b = 100_000_000_000
+        "move_calls": move_calls,
 
-    for i in range(num_rounds):
-        # Time between trades: 1-3 minutes
-        time_offset = timedelta(minutes=i * random.uniform(1, 3))
-        tx_time = base_time + time_offset
+        "objects": [
+            {
+                "object_id": random.choice(POOLS),
+                "type": "SharedObject",
+                "owner": None
+            }
+        ],
 
-        # Alternate between A→B and B→A
-        sender = addr_a if i % 2 == 0 else addr_b
-        receiver_hint = addr_b if i % 2 == 0 else addr_a
+        "effects": {
+            "created_count": 0,
+            "mutated_count": 2 if is_flash_loan else 1,
+            "deleted_count": 0,
+            "all_changed_objects": [],
+            "all_removed_objects": []
+        },
 
-        # Calculate minimal output (wash trading has minimal slippage)
-        amount_out = int(trade_amount * 0.997)  # Only 0.3% fee loss
+        "events": events,
 
-        swap_event = {
-            "type": "SwapExecuted",
+        # Flattened arrays for aggregation
+        "packages": packages,
+        "modules": modules,
+        "functions": functions,
+    }
+
+def create_swap_event(
+    pool_id: str,
+    sender: str,
+    amount_in: int,
+    amount_out: int,
+    token_in: bool = True
+) -> Dict[str, Any]:
+    """
+    Create a SwapExecuted event with parsed event data
+
+    Matches SwapExecuted struct from sui-indexer/src/events.rs
+    NOTE: In production, event_data would be parsed from BCS
+    """
+    price_impact = random.randint(10, 500)  # 0.1% to 5% in basis points
+    fee_amount = amount_in * 30 // 10000  # 0.3% fee
+
+    return {
+        # Basic event info (always in EsEvent)
+        "type": f"{PACKAGE_ID}::simple_dex::SwapExecuted<0x2::sui::SUI, 0x2::sui::SUI>",
+        "package": PACKAGE_ID,
+        "module": "simple_dex",
+        "sender": sender,
+
+        # Parsed event data (NOT currently in indexer ES, but needed for behavioral detection)
+        "event_data": {
             "pool_id": pool_id,
             "sender": sender,
-            "token_in": (i % 2 == 0),
-            "amount_in": trade_amount,
+            "token_in": token_in,
+            "amount_in": amount_in,
             "amount_out": amount_out,
-            "fee_amount": int(trade_amount * 0.003),
-            "reserve_a": reserve_a,
-            "reserve_b": reserve_b,
-            "price_impact": random.randint(10, 50),  # Very low impact (0.1-0.5%)
-            "timestamp": tx_time.isoformat()
+            "fee_amount": fee_amount,
+            "reserve_a": random.randint(1000000000, 10000000000),
+            "reserve_b": random.randint(1000000000, 10000000000),
+            "price_impact": price_impact,
+        }
+    }
+
+def create_flash_loan_event(
+    pool_id: str,
+    borrower: str,
+    amount: int
+) -> Dict[str, Any]:
+    """Create a FlashLoanTaken event"""
+    fee = amount * 9 // 10000  # 0.09% fee
+
+    return {
+        "type": f"{PACKAGE_ID}::flash_loan_pool::FlashLoanTaken<0x2::sui::SUI>",
+        "package": PACKAGE_ID,
+        "module": "flash_loan_pool",
+        "sender": borrower,
+
+        "event_data": {
+            "pool_id": pool_id,
+            "borrower": borrower,
+            "amount": amount,
+            "fee": fee,
+        }
+    }
+
+# =============================================================================
+# BEHAVIORAL PATTERN GENERATORS
+# Patterns are HIDDEN - no explicit tags, detect via ELK queries
+# =============================================================================
+
+def generate_wash_trading_sequence(num_rounds: int = 20) -> List[Dict[str, Any]]:
+    """
+    Wash Trading: Two addresses trading back and forth to create fake volume
+
+    Pattern (HIDDEN in data):
+    - Same 2 addresses
+    - Same pool
+    - Alternating directions
+    - Similar amounts (within 5%)
+    - Short time windows (20-40 seconds between trades)
+    - Low price impact
+    - 10-30 rounds in 30 minutes
+
+    Detection: Query for address pairs with high frequency, same pool, alternating swaps
+    """
+    addr1 = generate_address("wash_addr1_" + str(random.randint(1000, 9999)))
+    addr2 = generate_address("wash_addr2_" + str(random.randint(1000, 9999)))
+    pool = random.choice(POOLS)
+    base_amount = random.randint(5_000_000_000, 20_000_000_000)  # 5-20 units
+
+    transactions = []
+
+    for i in range(num_rounds):
+        # Alternating: addr1 -> addr2, then addr2 -> addr1
+        if i % 2 == 0:
+            sender = addr1
+            token_in = True
+        else:
+            sender = addr2
+            token_in = False
+
+        # Similar amounts with small variance
+        amount_in = int(base_amount * random.uniform(0.95, 1.05))
+        amount_out = int(amount_in * random.uniform(0.997, 0.999))  # Minimal price impact
+
+        event = create_swap_event(pool, sender, amount_in, amount_out, token_in)
+        move_call = {
+            "package": PACKAGE_ID,
+            "module": "simple_dex",
+            "function": "swap_a_to_b" if token_in else "swap_b_to_a",
+            "full_name": f"{PACKAGE_ID}::simple_dex::{'swap_a_to_b' if token_in else 'swap_b_to_a'}"
         }
 
-        tx = {
-            "tx_digest": generate_tx_digest(),
-            "checkpoint": base_checkpoint + i,
-            "sender": sender,
-            "timestamp_ms": int(tx_time.timestamp() * 1000),
-            "execution_status": "success",
-            "events": [swap_event],
-            "package_id": PACKAGE_ID,
-            "behavior_tag": "wash_trading",
-            "wash_trading_pair": f"{addr_a}:{addr_b}",
-            "wash_round": i,
-            "related_address": receiver_hint
-        }
-
+        tx = create_es_transaction(sender, [event], [move_call])
         transactions.append(tx)
+
+        # Short time between rounds (20-40 seconds)
+        advance_time(random.randint(20, 40))
 
     return transactions
 
 def generate_money_laundering_chain(chain_length: int = 8) -> List[Dict[str, Any]]:
     """
-    Generate money laundering pattern: layering through multiple addresses
+    Money Laundering: Layering funds through multiple addresses to obscure origin
 
-    Pattern:
-    - Large initial amount from source
-    - Split into smaller amounts
-    - Transfer through 5-10 intermediary addresses
-    - Different pools and timing to obscure trail
-    - Final consolidation to destination
-    - Total time: 20-40 minutes
+    Pattern (HIDDEN in data):
+    - Sequential chain of swaps: A -> B -> C -> D -> ... -> Z
+    - Different addresses for each hop
+    - May use different pools
+    - Amounts may be broken up (structuring) - amounts < 10M units
+    - Time spacing: 2-5 minutes between hops
+    - Total chain completes in 20-40 minutes
+
+    Detection: Query for chains of swaps connecting addresses in sequence
     """
+    # Create address chain
+    addresses = [generate_address(f"launder_{i}_{random.randint(1000,9999)}")
+                 for i in range(chain_length)]
 
-    # Select addresses from laundering ring
-    chain = random.sample(LAUNDERING_RING, min(chain_length, len(LAUNDERING_RING)))
-
-    base_time = datetime.now() - timedelta(minutes=random.randint(0, 1000))
-    base_checkpoint = generate_checkpoint()
+    # Initial large amount
+    total_amount = random.randint(50_000_000_000, 200_000_000_000)  # 50-200 units
 
     transactions = []
 
-    # Initial large amount
-    initial_amount = random.randint(100_000_000_000, 500_000_000_000)  # 100k-500k
-    current_amounts = [initial_amount]
+    for i in range(chain_length - 1):
+        sender = addresses[i]
+        receiver = addresses[i + 1]  # Next in chain
 
-    pools = [DEX_POOL_USDC_USDT, DEX_POOL_USDT_WETH, DEX_POOL_WETH_USDC]
-
-    for hop_index in range(len(chain) - 1):
-        sender = chain[hop_index]
-        receiver = chain[hop_index + 1]
-
-        # Time between hops: 2-5 minutes
-        time_offset = timedelta(minutes=(hop_index + 1) * random.uniform(2, 5))
-        tx_time = base_time + time_offset
-
-        # Possibly split amounts in middle of chain
-        if hop_index == len(chain) // 2 and random.random() < 0.6:
-            # Split into 2-3 smaller amounts
-            num_splits = random.randint(2, 3)
+        # Structuring: break into smaller amounts if amount > 10M
+        if total_amount > 10_000_000_000:
+            # Split into 2-4 smaller transactions
+            num_splits = random.randint(2, 4)
             split_amounts = []
-            remaining = current_amounts[0]
-
-            for i in range(num_splits - 1):
-                split = remaining // num_splits
+            remaining = total_amount
+            for j in range(num_splits - 1):
+                split = int(remaining * random.uniform(0.2, 0.4))
                 split_amounts.append(split)
                 remaining -= split
             split_amounts.append(remaining)
 
-            current_amounts = split_amounts
+            # Create multiple smaller swaps
+            for split_amt in split_amounts:
+                amount_in = split_amt
+                amount_out = int(amount_in * random.uniform(0.995, 0.999))
+                pool = random.choice(POOLS)
 
-        # Process each amount
-        for amount_idx, amount in enumerate(current_amounts):
-            pool = pools[hop_index % len(pools)]
-
-            # Structuring: keep amounts under threshold
-            if amount > 10_000_000_000:  # If over 10k
-                # Break into smaller chunks
-                num_chunks = random.randint(2, 4)
-                chunk_size = amount // num_chunks
-
-                for chunk_idx in range(num_chunks):
-                    chunk_time = tx_time + timedelta(seconds=chunk_idx * 30)
-                    chunk_amount = chunk_size if chunk_idx < num_chunks - 1 else (amount - chunk_size * (num_chunks - 1))
-
-                    swap_event = {
-                        "type": "SwapExecuted",
-                        "pool_id": pool,
-                        "sender": sender,
-                        "token_in": True,
-                        "amount_in": chunk_amount,
-                        "amount_out": int(chunk_amount * 0.99),
-                        "fee_amount": int(chunk_amount * 0.01),
-                        "reserve_a": 100_000_000_000,
-                        "reserve_b": 100_000_000_000,
-                        "price_impact": random.randint(50, 200),
-                        "timestamp": chunk_time.isoformat()
-                    }
-
-                    tx = {
-                        "tx_digest": generate_tx_digest(),
-                        "checkpoint": base_checkpoint + hop_index * 10 + chunk_idx,
-                        "sender": sender,
-                        "timestamp_ms": int(chunk_time.timestamp() * 1000),
-                        "execution_status": "success",
-                        "events": [swap_event],
-                        "package_id": PACKAGE_ID,
-                        "behavior_tag": "money_laundering",
-                        "laundering_hop": hop_index,
-                        "chain_id": chain[0],  # Source as chain identifier
-                        "structuring": True,  # Breaking into small amounts
-                        "related_address": receiver
-                    }
-
-                    transactions.append(tx)
-            else:
-                # Single transaction
-                swap_event = {
-                    "type": "SwapExecuted",
-                    "pool_id": pool,
-                    "sender": sender,
-                    "token_in": True,
-                    "amount_in": amount,
-                    "amount_out": int(amount * 0.99),
-                    "fee_amount": int(amount * 0.01),
-                    "reserve_a": 100_000_000_000,
-                    "reserve_b": 100_000_000_000,
-                    "price_impact": random.randint(50, 200),
-                    "timestamp": tx_time.isoformat()
+                event = create_swap_event(pool, sender, amount_in, amount_out)
+                move_call = {
+                    "package": PACKAGE_ID,
+                    "module": "simple_dex",
+                    "function": "swap_a_to_b",
+                    "full_name": f"{PACKAGE_ID}::simple_dex::swap_a_to_b"
                 }
 
-                tx = {
-                    "tx_digest": generate_tx_digest(),
-                    "checkpoint": base_checkpoint + hop_index * 10,
-                    "sender": sender,
-                    "timestamp_ms": int(tx_time.timestamp() * 1000),
-                    "execution_status": "success",
-                    "events": [swap_event],
-                    "package_id": PACKAGE_ID,
-                    "behavior_tag": "money_laundering",
-                    "laundering_hop": hop_index,
-                    "chain_id": chain[0],
-                    "related_address": receiver
-                }
-
+                tx = create_es_transaction(sender, [event], [move_call])
                 transactions.append(tx)
+
+                advance_time(random.randint(10, 30))  # Short gaps between splits
+
+            total_amount = sum(split_amounts) - int(sum(split_amounts) * 0.003)  # Account for fees
+        else:
+            # Single swap
+            amount_in = total_amount
+            amount_out = int(amount_in * random.uniform(0.995, 0.999))
+            pool = random.choice(POOLS)
+
+            event = create_swap_event(pool, sender, amount_in, amount_out)
+            move_call = {
+                "package": PACKAGE_ID,
+                "module": "simple_dex",
+                "function": "swap_a_to_b",
+                "full_name": f"{PACKAGE_ID}::simple_dex::swap_a_to_b"
+            }
+
+            tx = create_es_transaction(sender, [event], [move_call])
+            transactions.append(tx)
+
+            total_amount = amount_out
+
+        # Time between hops in chain (2-5 minutes)
+        advance_time(random.randint(120, 300))
 
     return transactions
 
-def generate_circular_flow_pattern() -> List[Dict[str, Any]]:
+def generate_circular_flow() -> List[Dict[str, Any]]:
     """
-    Generate circular fund flow pattern: A → B → C → D → A
-    Suspicious when amounts are similar and timing is coordinated
+    Circular Fund Flow: A -> B -> C -> D -> A
 
-    Pattern:
-    - 4-6 addresses in a circle
-    - Each transfers to next within 1-2 minutes
-    - Similar amounts (with small losses due to fees)
+    Pattern (HIDDEN in data):
+    - 4-6 addresses forming a circle
+    - Each address swaps to the next
     - Returns to original address
-    - Used to obscure fund origin or create confusion
+    - Similar amounts throughout (with small losses from fees)
+    - Quick succession (1-2 minutes between hops)
+    - Complete circle in 5-10 minutes
+
+    Detection: Graph analysis - detect cycles in address->address swap graph
     """
+    circle_size = random.randint(4, 6)
+    addresses = [generate_address(f"circle_{i}_{random.randint(1000,9999)}")
+                 for i in range(circle_size)]
 
-    # Select 4-6 addresses
-    num_addresses = random.randint(4, 6)
-    circle = random.sample(LAUNDERING_RING + NORMAL_USERS, num_addresses)
-    circle.append(circle[0])  # Complete the circle
-
-    base_time = datetime.now() - timedelta(minutes=random.randint(0, 1000))
-    base_checkpoint = generate_checkpoint()
-
+    amount = random.randint(10_000_000_000, 50_000_000_000)
     transactions = []
 
-    initial_amount = random.randint(20_000_000_000, 100_000_000_000)
-    current_amount = initial_amount
+    for i in range(circle_size):
+        sender = addresses[i]
+        # Next address in circle (wraps around)
+        next_addr = addresses[(i + 1) % circle_size]
 
-    pool = random.choice([DEX_POOL_USDC_USDT, DEX_POOL_WETH_USDC])
+        amount_in = amount
+        amount_out = int(amount_in * random.uniform(0.996, 0.999))
+        pool = random.choice(POOLS)
 
-    for hop_index in range(len(circle) - 1):
-        sender = circle[hop_index]
-        receiver = circle[hop_index + 1]
-
-        # Quick succession (1-2 minutes between hops)
-        time_offset = timedelta(minutes=hop_index * random.uniform(1, 2))
-        tx_time = base_time + time_offset
-
-        # Lose small amount to fees each hop
-        amount_out = int(current_amount * 0.997)
-        current_amount = amount_out
-
-        swap_event = {
-            "type": "SwapExecuted",
-            "pool_id": pool,
-            "sender": sender,
-            "token_in": True,
-            "amount_in": current_amount,
-            "amount_out": amount_out,
-            "fee_amount": int(current_amount * 0.003),
-            "reserve_a": 100_000_000_000,
-            "reserve_b": 100_000_000_000,
-            "price_impact": random.randint(30, 100),
-            "timestamp": tx_time.isoformat()
+        event = create_swap_event(pool, sender, amount_in, amount_out)
+        move_call = {
+            "package": PACKAGE_ID,
+            "module": "simple_dex",
+            "function": "swap_a_to_b",
+            "full_name": f"{PACKAGE_ID}::simple_dex::swap_a_to_b"
         }
 
-        tx = {
-            "tx_digest": generate_tx_digest(),
-            "checkpoint": base_checkpoint + hop_index,
-            "sender": sender,
-            "timestamp_ms": int(tx_time.timestamp() * 1000),
-            "execution_status": "success",
-            "events": [swap_event],
-            "package_id": PACKAGE_ID,
-            "behavior_tag": "circular_flow",
-            "circle_id": circle[0],  # Use first address as ID
-            "hop_in_circle": hop_index,
-            "related_address": receiver,
-            "final_return_amount": amount_out if hop_index == len(circle) - 2 else None
-        }
-
+        tx = create_es_transaction(sender, [event], [move_call])
         transactions.append(tx)
+
+        amount = amount_out  # Amount for next hop
+        advance_time(random.randint(60, 120))  # 1-2 minutes between hops
 
     return transactions
 
 def generate_hft_manipulation_burst() -> List[Dict[str, Any]]:
     """
-    Generate high-frequency trading manipulation pattern
+    High-Frequency Trading Manipulation: Rapid burst of trades
 
-    Pattern:
-    - Burst of 20-50 transactions within 2-3 minutes
-    - Same address, same pool
-    - Small amounts but high frequency
-    - Used to manipulate price or front-run other traders
-    - Creates artificial volatility
+    Pattern (HIDDEN in data):
+    - Single address
+    - Same pool
+    - 20-50 transactions in 2-3 minutes
+    - Small amounts per trade
+    - Alternating directions (buy/sell)
+    - Used to manipulate price or front-run
+
+    Detection: Query for high transaction frequency from single address + pool
     """
-
-    bot = random.choice(HFT_BOTS)
-    pool = random.choice([DEX_POOL_USDC_USDT, DEX_POOL_WETH_USDC])
-
-    base_time = datetime.now() - timedelta(minutes=random.randint(0, 1000))
-    base_checkpoint = generate_checkpoint()
+    attacker = generate_address(f"hft_{random.randint(1000,9999)}")
+    pool = random.choice(POOLS)
+    num_trades = random.randint(20, 50)
+    base_amount = random.randint(1_000_000_000, 5_000_000_000)  # Small amounts
 
     transactions = []
 
-    num_trades = random.randint(20, 50)
-    total_duration_seconds = random.randint(120, 180)  # 2-3 minutes
-
-    reserve_a = 100_000_000_000
-    reserve_b = 100_000_000_000
-
     for i in range(num_trades):
-        # Evenly distributed in time
-        time_offset = timedelta(seconds=(total_duration_seconds / num_trades) * i)
-        tx_time = base_time + time_offset
+        token_in = (i % 2 == 0)  # Alternating directions
+        amount_in = int(base_amount * random.uniform(0.9, 1.1))
+        amount_out = int(amount_in * random.uniform(0.995, 0.999))
 
-        # Small amounts
-        amount = random.randint(500_000_000, 2_000_000_000)  # 500-2000
-
-        # Alternate buy/sell
-        token_in = (i % 2 == 0)
-
-        swap_event = {
-            "type": "SwapExecuted",
-            "pool_id": pool,
-            "sender": bot,
-            "token_in": token_in,
-            "amount_in": amount,
-            "amount_out": int(amount * 0.997),
-            "fee_amount": int(amount * 0.003),
-            "reserve_a": reserve_a,
-            "reserve_b": reserve_b,
-            "price_impact": random.randint(5, 30),  # Minimal impact each time
-            "timestamp": tx_time.isoformat()
+        event = create_swap_event(pool, attacker, amount_in, amount_out, token_in)
+        move_call = {
+            "package": PACKAGE_ID,
+            "module": "simple_dex",
+            "function": "swap_a_to_b" if token_in else "swap_b_to_a",
+            "full_name": f"{PACKAGE_ID}::simple_dex::{'swap_a_to_b' if token_in else 'swap_b_to_a'}"
         }
 
-        tx = {
-            "tx_digest": generate_tx_digest(),
-            "checkpoint": base_checkpoint + i,
-            "sender": bot,
-            "timestamp_ms": int(tx_time.timestamp() * 1000),
-            "execution_status": "success",
-            "events": [swap_event],
-            "package_id": PACKAGE_ID,
-            "behavior_tag": "hft_manipulation",
-            "burst_id": f"{bot}:{int(base_time.timestamp())}",
-            "trade_in_burst": i,
-            "total_burst_trades": num_trades
-        }
-
+        tx = create_es_transaction(attacker, [event], [move_call])
         transactions.append(tx)
+
+        # Very short time between trades (2-10 seconds)
+        advance_time(random.randint(2, 10))
 
     return transactions
 
 def generate_coordinated_attack() -> List[Dict[str, Any]]:
     """
-    Generate coordinated attack pattern: multiple addresses working together
+    Coordinated Attack: Multiple addresses attacking same pool simultaneously
 
-    Pattern:
-    - 5-8 addresses from attack group
-    - All trade within 5-10 minute window
-    - Targeting same pool
-    - Similar amounts and timing suggests coordination
-    - Combined effect manipulates price significantly
+    Pattern (HIDDEN in data):
+    - 5-8 different addresses
+    - Same pool
+    - Same time window (within 5-10 minutes)
+    - Similar transaction types
+    - May be sandwich attack or coordinated drain
+
+    Detection: Query for multiple addresses + same pool + tight time window
     """
-
-    # Select attackers
     num_attackers = random.randint(5, 8)
-    attackers = random.sample(ATTACK_GROUP, num_attackers)
-
-    pool = random.choice([DEX_POOL_USDC_USDT, DEX_POOL_WETH_USDC])
-
-    base_time = datetime.now() - timedelta(minutes=random.randint(0, 1000))
-    base_checkpoint = generate_checkpoint()
+    attackers = [generate_address(f"coord_{i}_{random.randint(1000,9999)}")
+                 for i in range(num_attackers)]
+    pool = random.choice(POOLS)
 
     transactions = []
 
-    # Attack window: 5-10 minutes
-    attack_window_minutes = random.uniform(5, 10)
+    for attacker in attackers:
+        # Each attacker does 1-3 swaps
+        num_swaps = random.randint(1, 3)
+        for _ in range(num_swaps):
+            amount_in = random.randint(10_000_000_000, 50_000_000_000)
+            amount_out = int(amount_in * random.uniform(0.990, 0.999))
 
-    reserve_a = 100_000_000_000
-    reserve_b = 100_000_000_000
+            event = create_swap_event(pool, attacker, amount_in, amount_out)
+            move_call = {
+                "package": PACKAGE_ID,
+                "module": "simple_dex",
+                "function": "swap_a_to_b",
+                "full_name": f"{PACKAGE_ID}::simple_dex::swap_a_to_b"
+            }
 
-    for attacker_idx, attacker in enumerate(attackers):
-        # Stagger timing slightly
-        time_offset = timedelta(minutes=random.uniform(0, attack_window_minutes))
-        tx_time = base_time + time_offset
+            tx = create_es_transaction(attacker, [event], [move_call])
+            transactions.append(tx)
 
-        # Large coordinated amounts
-        amount = random.randint(10_000_000_000, 30_000_000_000)
-
-        swap_event = {
-            "type": "SwapExecuted",
-            "pool_id": pool,
-            "sender": attacker,
-            "token_in": True,
-            "amount_in": amount,
-            "amount_out": int(amount * 0.95),  # Significant impact
-            "fee_amount": int(amount * 0.003),
-            "reserve_a": reserve_a,
-            "reserve_b": reserve_b,
-            "price_impact": random.randint(500, 1500),  # 5-15% each
-            "timestamp": tx_time.isoformat()
-        }
-
-        tx = {
-            "tx_digest": generate_tx_digest(),
-            "checkpoint": base_checkpoint + attacker_idx,
-            "sender": attacker,
-            "timestamp_ms": int(tx_time.timestamp() * 1000),
-            "execution_status": "success",
-            "events": [swap_event],
-            "package_id": PACKAGE_ID,
-            "behavior_tag": "coordinated_attack",
-            "attack_id": f"attack:{int(base_time.timestamp())}",
-            "attacker_index": attacker_idx,
-            "total_attackers": num_attackers,
-            "target_pool": pool
-        }
-
-        transactions.append(tx)
+            # Very short time gaps (10-60 seconds)
+            advance_time(random.randint(10, 60))
 
     return transactions
-
-def generate_layering_spoofing() -> List[Dict[str, Any]]:
-    """
-    Generate layering/spoofing pattern (advanced market manipulation)
-
-    Pattern:
-    - Place many small orders on one side
-    - Execute one real trade on opposite side
-    - Cancel the fake orders
-    - Creates false impression of supply/demand
-    """
-
-    manipulator = random.choice(HFT_BOTS)
-    pool = random.choice([DEX_POOL_USDC_USDT, DEX_POOL_WETH_USDC])
-
-    base_time = datetime.now() - timedelta(minutes=random.randint(0, 1000))
-    base_checkpoint = generate_checkpoint()
-
-    transactions = []
-
-    # Phase 1: Create fake orders (10-15 small swaps on one side)
-    num_fake_orders = random.randint(10, 15)
-
-    for i in range(num_fake_orders):
-        time_offset = timedelta(seconds=i * 5)  # 5 seconds apart
-        tx_time = base_time + time_offset
-
-        small_amount = random.randint(100_000_000, 500_000_000)
-
-        swap_event = {
-            "type": "SwapExecuted",
-            "pool_id": pool,
-            "sender": manipulator,
-            "token_in": True,
-            "amount_in": small_amount,
-            "amount_out": int(small_amount * 0.997),
-            "fee_amount": int(small_amount * 0.003),
-            "reserve_a": 100_000_000_000,
-            "reserve_b": 100_000_000_000,
-            "price_impact": random.randint(1, 5),
-            "timestamp": tx_time.isoformat()
-        }
-
-        tx = {
-            "tx_digest": generate_tx_digest(),
-            "checkpoint": base_checkpoint + i,
-            "sender": manipulator,
-            "timestamp_ms": int(tx_time.timestamp() * 1000),
-            "execution_status": "success",
-            "events": [swap_event],
-            "package_id": PACKAGE_ID,
-            "behavior_tag": "layering_spoofing",
-            "phase": "layering",
-            "layer_order": i
-        }
-
-        transactions.append(tx)
-
-    # Phase 2: Real trade (opposite direction, larger amount)
-    real_trade_time = base_time + timedelta(seconds=num_fake_orders * 5 + 10)
-    large_amount = random.randint(20_000_000_000, 50_000_000_000)
-
-    real_swap = {
-        "type": "SwapExecuted",
-        "pool_id": pool,
-        "sender": manipulator,
-        "token_in": False,  # Opposite direction
-        "amount_in": large_amount,
-        "amount_out": int(large_amount * 0.95),
-        "fee_amount": int(large_amount * 0.003),
-        "reserve_a": 100_000_000_000,
-        "reserve_b": 100_000_000_000,
-        "price_impact": random.randint(800, 1500),
-        "timestamp": real_trade_time.isoformat()
-    }
-
-    real_tx = {
-        "tx_digest": generate_tx_digest(),
-        "checkpoint": base_checkpoint + num_fake_orders,
-        "sender": manipulator,
-        "timestamp_ms": int(real_trade_time.timestamp() * 1000),
-        "execution_status": "success",
-        "events": [real_swap],
-        "package_id": PACKAGE_ID,
-        "behavior_tag": "layering_spoofing",
-        "phase": "real_trade"
-    }
-
-    transactions.append(real_tx)
-
-    return transactions
-
-# ============================================================================
-# NORMAL ACTIVITY GENERATORS
-# ============================================================================
 
 def generate_normal_swap() -> Dict[str, Any]:
-    """Generate normal legitimate swap"""
+    """Generate a normal, legitimate swap transaction"""
+    sender = generate_address(f"normal_{random.randint(1000, 99999)}")
+    pool = random.choice(POOLS)
+    amount_in = random.randint(1_000_000_000, 100_000_000_000)
+    amount_out = int(amount_in * random.uniform(0.990, 0.998))
 
-    user = random.choice(NORMAL_USERS)
-    pool = random.choice([DEX_POOL_USDC_USDT, DEX_POOL_USDT_WETH, DEX_POOL_WETH_USDC])
-
-    timestamp = datetime.now() - timedelta(minutes=random.randint(0, 10000))
-
-    amount = random.randint(500_000_000, 10_000_000_000)
-
-    swap_event = {
-        "type": "SwapExecuted",
-        "pool_id": pool,
-        "sender": user,
-        "token_in": random.choice([True, False]),
-        "amount_in": amount,
-        "amount_out": int(amount * 0.997),
-        "fee_amount": int(amount * 0.003),
-        "reserve_a": 100_000_000_000,
-        "reserve_b": 100_000_000_000,
-        "price_impact": random.randint(10, 200),
-        "timestamp": timestamp.isoformat()
+    event = create_swap_event(pool, sender, amount_in, amount_out)
+    move_call = {
+        "package": PACKAGE_ID,
+        "module": "simple_dex",
+        "function": "swap_a_to_b",
+        "full_name": f"{PACKAGE_ID}::simple_dex::swap_a_to_b"
     }
 
-    return {
-        "tx_digest": generate_tx_digest(),
-        "checkpoint": generate_checkpoint(),
-        "sender": user,
-        "timestamp_ms": int(timestamp.timestamp() * 1000),
-        "execution_status": "success",
-        "events": [swap_event],
-        "package_id": PACKAGE_ID,
-        "behavior_tag": "normal"
-    }
+    return create_es_transaction(sender, [event], [move_call])
 
-# ============================================================================
-# MAIN DATASET GENERATION
-# ============================================================================
+def generate_normal_flash_loan() -> Dict[str, Any]:
+    """Generate a normal flash loan transaction"""
+    borrower = generate_address(f"flashloan_{random.randint(1000, 99999)}")
+    pool = FLASH_LOAN_POOL_USDC
+    amount = random.randint(10_000_000_000, 500_000_000_000)
 
-def generate_behavioral_dataset(num_transactions: int = 2000) -> List[Dict[str, Any]]:
+    fl_event = create_flash_loan_event(pool, borrower, amount)
+    move_calls = [
+        {
+            "package": PACKAGE_ID,
+            "module": "flash_loan_pool",
+            "function": "borrow",
+            "full_name": f"{PACKAGE_ID}::flash_loan_pool::borrow"
+        },
+        {
+            "package": PACKAGE_ID,
+            "module": "flash_loan_pool",
+            "function": "repay",
+            "full_name": f"{PACKAGE_ID}::flash_loan_pool::repay"
+        }
+    ]
+
+    return create_es_transaction(borrower, [fl_event], move_calls, is_flash_loan=True)
+
+# =============================================================================
+# MAIN DATA GENERATION
+# =============================================================================
+
+def generate_behavioral_dataset(total_txs: int = 2000) -> List[Dict[str, Any]]:
     """
-    Generate dataset focused on behavioral patterns
+    Generate a realistic dataset with behavioral patterns hidden in normal-looking data
 
     Distribution:
-    - 50% Normal activity
-    - 15% Wash trading (multiple sequences)
-    - 12% Money laundering chains
-    - 8% Circular flows
-    - 7% HFT manipulation
-    - 5% Coordinated attacks
-    - 3% Layering/spoofing
+    - 15% Wash Trading (300 txs in ~15 sequences)
+    - 10% Money Laundering (200 txs in ~25 chains)
+    - 8% Circular Flows (160 txs in ~35 circles)
+    - 7% HFT Manipulation (140 txs in ~5 bursts)
+    - 5% Coordinated Attacks (100 txs in ~10 attacks)
+    - 55% Normal Activity (1100 txs)
     """
+    print(f"🔧 Generating {total_txs} transactions with hidden behavioral patterns...")
 
-    transactions = []
+    all_transactions = []
 
-    # Calculate counts
-    num_normal = int(num_transactions * 0.50)
-    num_wash_trading_sequences = 8  # Each sequence = 10-30 txs
-    num_laundering_chains = 6  # Each chain = 8-15 txs
-    num_circular_flows = 10  # Each flow = 4-6 txs
-    num_hft_bursts = 4  # Each burst = 20-50 txs
-    num_coordinated_attacks = 5  # Each attack = 5-8 txs
-    num_layering = 3  # Each layering = 10-20 txs
+    # Wash Trading: ~15% (15 sequences of 20 trades each = 300 txs)
+    print("  📊 Generating wash trading patterns (hidden)...")
+    num_wash_sequences = int(total_txs * 0.15 / 20)
+    for i in range(num_wash_sequences):
+        all_transactions.extend(generate_wash_trading_sequence(random.randint(15, 25)))
+        # Random gap before next sequence
+        advance_time(random.randint(300, 900))
 
-    print(f"Generating {num_transactions}+ transactions with behavioral patterns...")
-    print(f"  - Normal swaps: {num_normal}")
-    print(f"  - Wash trading sequences: {num_wash_trading_sequences}")
-    print(f"  - Money laundering chains: {num_laundering_chains}")
-    print(f"  - Circular flows: {num_circular_flows}")
-    print(f"  - HFT manipulation bursts: {num_hft_bursts}")
-    print(f"  - Coordinated attacks: {num_coordinated_attacks}")
-    print(f"  - Layering/spoofing: {num_layering}")
-    print()
+    # Money Laundering: ~10% (25 chains of 8 hops each = 200 txs)
+    print("  💰 Generating money laundering chains (hidden)...")
+    num_laundering_chains = int(total_txs * 0.10 / 8)
+    for i in range(num_laundering_chains):
+        all_transactions.extend(generate_money_laundering_chain(random.randint(6, 10)))
+        advance_time(random.randint(600, 1200))
 
-    # Generate normal activity
-    for _ in range(num_normal):
-        transactions.append(generate_normal_swap())
+    # Circular Flows: ~8% (35 circles of ~4.5 txs each = 160 txs)
+    print("  ⭕ Generating circular flow patterns (hidden)...")
+    num_circles = int(total_txs * 0.08 / 4.5)
+    for i in range(num_circles):
+        all_transactions.extend(generate_circular_flow())
+        advance_time(random.randint(300, 900))
 
-    # Generate behavioral patterns
-    for i in range(num_wash_trading_sequences):
-        transactions.extend(generate_wash_trading_sequence(i, duration_minutes=30))
+    # HFT Manipulation: ~7% (5 bursts of ~28 txs each = 140 txs)
+    print("  ⚡ Generating HFT manipulation bursts (hidden)...")
+    num_bursts = int(total_txs * 0.07 / 28)
+    for i in range(num_bursts):
+        all_transactions.extend(generate_hft_manipulation_burst())
+        advance_time(random.randint(1200, 2400))
 
-    for _ in range(num_laundering_chains):
-        transactions.extend(generate_money_laundering_chain(chain_length=random.randint(6, 10)))
+    # Coordinated Attacks: ~5% (10 attacks of ~10 txs each = 100 txs)
+    print("  🎯 Generating coordinated attack patterns (hidden)...")
+    num_attacks = int(total_txs * 0.05 / 10)
+    for i in range(num_attacks):
+        all_transactions.extend(generate_coordinated_attack())
+        advance_time(random.randint(1200, 2400))
 
-    for _ in range(num_circular_flows):
-        transactions.extend(generate_circular_flow_pattern())
+    # Normal Activity: Fill remaining to reach total_txs
+    num_normal = total_txs - len(all_transactions)
+    print(f"  ✅ Generating {num_normal} normal transactions...")
+    for i in range(num_normal):
+        if random.random() < 0.1:  # 10% flash loans
+            all_transactions.append(generate_normal_flash_loan())
+        else:  # 90% swaps
+            all_transactions.append(generate_normal_swap())
 
-    for _ in range(num_hft_bursts):
-        transactions.extend(generate_hft_manipulation_burst())
+        # Random time gaps (30 seconds to 5 minutes)
+        advance_time(random.randint(30, 300))
 
-    for _ in range(num_coordinated_attacks):
-        transactions.extend(generate_coordinated_attack())
+    # Sort by timestamp to mix behavioral patterns with normal activity
+    all_transactions.sort(key=lambda tx: tx['timestamp_ms'])
 
-    for _ in range(num_layering):
-        transactions.extend(generate_layering_spoofing())
+    print(f"\n✅ Generated {len(all_transactions)} total transactions")
+    print(f"   Time range: {all_transactions[0]['timestamp_ms']} to {all_transactions[-1]['timestamp_ms']}")
+    print(f"   Checkpoint range: {all_transactions[0]['checkpoint_sequence_number']} to {all_transactions[-1]['checkpoint_sequence_number']}")
+    print("\n⚠️  NOTE: Behavioral patterns are HIDDEN in normal-looking data")
+    print("   Use Elasticsearch queries to detect patterns based on:")
+    print("   - Address relationships and frequency")
+    print("   - Time windows and clustering")
+    print("   - Amount patterns and structuring")
+    print("   - Pool targeting and coordination")
 
-    # Shuffle to mix patterns
-    random.shuffle(transactions)
-
-    # Sort by timestamp for realistic ordering
-    transactions.sort(key=lambda x: x["timestamp_ms"])
-
-    return transactions
-
-# ============================================================================
-# OUTPUT
-# ============================================================================
+    return all_transactions
 
 if __name__ == "__main__":
-    print("=" * 80)
-    print("DeFi Behavioral Pattern Data Generator")
-    print("Focus: Time-series analysis and long-term suspicious activity detection")
-    print("=" * 80)
-    print()
+    # Generate 2000+ transactions
+    transactions = generate_behavioral_dataset(total_txs=2000)
 
-    # Generate dataset
-    dataset = generate_behavioral_dataset(2000)
+    # Save to JSON file
+    output_file = "behavioral_defi_data_2000.json"
+    with open(output_file, 'w') as f:
+        json.dump(transactions, f, indent=2)
 
-    # Save to file
-    output_file = "defi_behavioral_patterns_2000.json"
-    with open(output_file, "w") as f:
-        json.dump(dataset, f, indent=2)
-
-    print(f"✅ Generated {len(dataset)} transactions")
-    print(f"📁 Saved to: {output_file}")
-    print()
-
-    # Statistics
-    behavior_counts = {}
-    for tx in dataset:
-        tag = tx.get("behavior_tag", "unknown")
-        behavior_counts[tag] = behavior_counts.get(tag, 0) + 1
-
-    print("📊 Behavior Distribution:")
-    for behavior, count in sorted(behavior_counts.items(), key=lambda x: -x[1]):
-        percentage = (count / len(dataset)) * 100
-        print(f"  {behavior:25s}: {count:5d} txs ({percentage:5.2f}%)")
-    print()
-
-    print("🔍 Sample Patterns:")
-    print()
-
-    # Show sample of each pattern
-    for behavior in ["wash_trading", "money_laundering", "circular_flow", "hft_manipulation"]:
-        sample = next((tx for tx in dataset if tx.get("behavior_tag") == behavior), None)
-        if sample:
-            print(f"**{behavior.upper()}:**")
-            print(json.dumps(sample, indent=2)[:400] + "...\n")
+    print(f"\n💾 Saved to: {output_file}")
+    print(f"📏 File size: {os.path.getsize(output_file) / 1024 / 1024:.2f} MB")
+    print(f"\n🔍 Next steps:")
+    print(f"   1. Insert into Elasticsearch: ./insert_to_elasticsearch.sh {output_file}")
+    print(f"   2. Run detection queries from BEHAVIORAL_QUERIES.md")
+    print(f"   3. Analyze patterns in Kibana dashboards")
