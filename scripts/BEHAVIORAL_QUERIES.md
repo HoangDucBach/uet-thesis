@@ -366,20 +366,30 @@ POST sui-transactions/_search
             "size": 20
           },
           "aggs": {
-            "hourly_volume": {
-              "date_histogram": {
-                "field": "timestamp_ms",
-                "fixed_interval": "1h"
-              },
+            "back_to_parent": {
+              "reverse_nested": {},
               "aggs": {
-                "volume": {
-                  "sum": {"field": "events.event_data.amount_in"}
-                },
-                "avg_impact": {
-                  "avg": {"field": "events.event_data.price_impact"}
-                },
-                "tx_count": {
-                  "value_count": {"field": "events.event_data.pool_id"}
+                "hourly_volume": {
+                  "date_histogram": {
+                    "field": "timestamp_ms",
+                    "fixed_interval": "1h"
+                  },
+                  "aggs": {
+                    "to_events": {
+                      "nested": {"path": "events"},
+                      "aggs": {
+                        "volume": {
+                          "sum": {"field": "events.event_data.amount_in"}
+                        },
+                        "avg_impact": {
+                          "avg": {"field": "events.event_data.price_impact"}
+                        },
+                        "tx_count": {
+                          "value_count": {"field": "events.event_data.pool_id"}
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
