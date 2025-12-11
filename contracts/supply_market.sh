@@ -6,7 +6,7 @@ source .env
 USDC_TYPE="${PACKAGE_ID}::usdc::USDC"
 WETH_TYPE="${PACKAGE_ID}::weth::WETH"
 
-USDC_SUPPLY_AMOUNT=2000000000000
+USDC_SUPPLY_AMOUNT=10000000000000
 
 sui client ptb \
     --move-call "$PACKAGE_ID::coin_factory::mint_usdc" @$COIN_FACTORY_ID $USDC_SUPPLY_AMOUNT \

@@ -130,11 +130,15 @@ impl FlashLoanAnalyzer {
 
         // Step 6: Create detailed risk event
         let description = format!(
-            "Flash loan arbitrage detected: {} swaps across {} pools, {}% total price impact{}",
+            "Flash loan arbitrage detected: {} swaps across {} pools, {:.2}% total price impact{}",
             swaps.len(),
             unique_pools,
-            total_price_impact / 100,
-            if circular_trading { ", circular trading pattern" } else { "" }
+            total_price_impact as f64 / 100.0,
+            if circular_trading {
+                ", circular trading pattern"
+            } else {
+                ""
+            }
         );
 
         let mut event = RiskEvent::new(
@@ -151,13 +155,13 @@ impl FlashLoanAnalyzer {
         event = event
             .with_detail("flash_loan_count", serde_json::json!(flash_loan_info.len()))
             .with_detail("total_borrowed", serde_json::json!(
-                flash_loan_info.iter().map(|fl| fl.amount).sum::<u64>()
+                format_currency(flash_loan_info.iter().map(|fl| fl.amount).sum::<u64>())
             ))
             .with_detail("swap_count", serde_json::json!(swaps.len()))
             .with_detail("unique_pools", serde_json::json!(unique_pools))
             .with_detail("circular_trading", serde_json::json!(circular_trading))
-            .with_detail("total_price_impact_bps", serde_json::json!(total_price_impact))
-            .with_detail("max_price_impact_bps", serde_json::json!(max_single_impact))
+            .with_detail("total_price_impact", serde_json::json!(format_bps(total_price_impact)))
+            .with_detail("max_price_impact", serde_json::json!(format_bps(max_single_impact)))
             .with_detail("risk_score", serde_json::json!(risk_score));
 
         Some(event)
@@ -272,6 +276,22 @@ impl FlashLoanAnalyzer {
             .max()
             .unwrap_or(0)
     }
+}
+
+fn format_currency(amount: u64) -> String {
+    let s = amount.to_string();
+    let mut res = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            res.insert(0, ',');
+        }
+        res.insert(0, c);
+    }
+    res
+}
+
+fn format_bps(bps: u64) -> String {
+    format!("{:.2}%", bps as f64 / 100.0)
 }
 
 impl Default for FlashLoanAnalyzer {

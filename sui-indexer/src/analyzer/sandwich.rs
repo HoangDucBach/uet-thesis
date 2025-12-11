@@ -46,9 +46,9 @@ pub struct SandwichAnalyzer {
 impl SandwichAnalyzer {
     pub fn new() -> Self {
         Self {
-            transaction_buffer: Mutex::new(VecDeque::with_capacity(100)),
-            max_buffer_size: 100,
-            max_checkpoint_distance: 5,  // Within 5 checkpoints
+            transaction_buffer: Mutex::new(VecDeque::with_capacity(1000)),
+            max_buffer_size: 1000,
+            max_checkpoint_distance: 100,  // Increased to 100 checkpoints to catch slower attacks/simulations
             min_price_impact: 100,        // 1% minimum impact
         }
     }
@@ -141,8 +141,8 @@ impl SandwichAnalyzer {
                 s.checkpoint <= back_run.checkpoint &&
                 // Same sender as back-run (the attacker)
                 s.sender == back_run.sender &&
-                // Same direction (both A→B or both B→A)
-                s.token_in_direction == back_run.token_in_direction &&
+                // Opposite direction (Front-run buys, Back-run sells)
+                s.token_in_direction != back_run.token_in_direction &&
                 // Within checkpoint distance
                 back_run.checkpoint - s.checkpoint <= self.max_checkpoint_distance
             })
@@ -157,11 +157,14 @@ impl SandwichAnalyzer {
                     // Between front-run and back-run
                     s.checkpoint >= front_run.checkpoint &&
                     s.checkpoint <= back_run.checkpoint &&
-                    s.timestamp_ms > front_run.timestamp_ms &&
-                    s.timestamp_ms < back_run.timestamp_ms &&
+                    // Timestamp check: must be strictly between
+                    // Note: In same checkpoint, timestamps might be identical if not careful
+                    // So we relax timestamp check if checkpoints are different
+                    (s.checkpoint > front_run.checkpoint || s.timestamp_ms >= front_run.timestamp_ms) &&
+                    (s.checkpoint < back_run.checkpoint || s.timestamp_ms <= back_run.timestamp_ms) &&
                     // Different sender (the victim)
                     s.sender != back_run.sender &&
-                    // Opposite direction (victim trades into attacker's position)
+                    // Same direction as front-run (victim buys same token, pushing price further)
                     s.token_in_direction == front_run.token_in_direction
                 })
                 .collect();
@@ -197,6 +200,8 @@ impl SandwichAnalyzer {
 
         None
     }
+
+
 
     /// Estimate what the victim should have received without front-running
     fn estimate_expected_output(&self, victim: &SwapPattern, front_run: &SwapPattern) -> u64 {
@@ -269,9 +274,9 @@ impl SandwichAnalyzer {
         };
 
         let description = format!(
-            "Sandwich attack: attacker profit {}, victim loss {}%, time span {}ms",
-            sandwich.attacker_profit,
-            sandwich.victim_loss_bps / 100,
+            "Sandwich attack: attacker profit {}, victim loss {:.2}%, time span {}ms",
+            format_currency(sandwich.attacker_profit),
+            sandwich.victim_loss_bps as f64 / 100.0,
             time_diff
         );
 
@@ -290,8 +295,8 @@ impl SandwichAnalyzer {
         .with_detail("front_run_tx", serde_json::json!(sandwich.front_run.tx_digest))
         .with_detail("victim_tx", serde_json::json!(sandwich.victim.tx_digest))
         .with_detail("back_run_tx", serde_json::json!(sandwich.back_run.tx_digest))
-        .with_detail("attacker_profit", serde_json::json!(sandwich.attacker_profit))
-        .with_detail("victim_loss_bps", serde_json::json!(sandwich.victim_loss_bps))
+        .with_detail("attacker_profit", serde_json::json!(format_currency(sandwich.attacker_profit)))
+        .with_detail("victim_loss", serde_json::json!(format_bps(sandwich.victim_loss_bps)))
         .with_detail("time_span_ms", serde_json::json!(time_diff))
         .with_detail("risk_score", serde_json::json!(risk_score));
 
@@ -302,6 +307,22 @@ impl SandwichAnalyzer {
     pub fn get_buffer_size(&self) -> usize {
         self.transaction_buffer.lock().unwrap().len()
     }
+}
+
+fn format_currency(amount: u64) -> String {
+    let s = amount.to_string();
+    let mut res = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            res.insert(0, ',');
+        }
+        res.insert(0, c);
+    }
+    res
+}
+
+fn format_bps(bps: u64) -> String {
+    format!("{:.2}%", bps as f64 / 100.0)
 }
 
 impl Default for SandwichAnalyzer {

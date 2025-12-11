@@ -138,15 +138,15 @@ impl PriceAnalyzer {
         // Step 5: Create detailed risk event
         let description = if twap_info.is_some() {
             format!(
-                "Price manipulation: {}% price impact, {}% TWAP deviation (ratio: {:.1}% of pool)",
-                max_price_impact / 100,
-                twap_deviation / 100,
+                "Price manipulation: {:.2}% price impact, {:.2}% TWAP deviation (ratio: {:.2}% of pool)",
+                max_price_impact as f64 / 100.0,
+                twap_deviation as f64 / 100.0,
                 max_swap_to_depth_ratio * 100.0
             )
         } else {
             format!(
-                "High price impact: {}% in single swap (ratio: {:.1}% of pool depth)",
-                max_price_impact / 100,
+                "High price impact: {:.2}% in single swap (ratio: {:.2}% of pool depth)",
+                max_price_impact as f64 / 100.0,
                 max_swap_to_depth_ratio * 100.0
             )
         };
@@ -163,19 +163,19 @@ impl PriceAnalyzer {
 
         // Add detailed metrics
         event = event
-            .with_detail("max_price_impact_bps", serde_json::json!(max_price_impact))
+            .with_detail("max_price_impact", serde_json::json!(format_bps(max_price_impact)))
             .with_detail("swap_count", serde_json::json!(swaps.len()))
             .with_detail(
                 "swap_to_depth_ratio",
-                serde_json::json!(max_swap_to_depth_ratio),
+                serde_json::json!(format!("{:.2}%", max_swap_to_depth_ratio * 100.0)),
             )
             .with_detail("risk_score", serde_json::json!(risk_score));
 
         if let Some(twap) = twap_info {
             event = event
-                .with_detail("twap_deviation_bps", serde_json::json!(twap.deviation_bps))
-                .with_detail("spot_price", serde_json::json!(twap.spot_price))
-                .with_detail("twap_price", serde_json::json!(twap.twap_price))
+                .with_detail("twap_deviation", serde_json::json!(format_bps(twap.deviation_bps)))
+                .with_detail("spot_price", serde_json::json!(format_currency(twap.spot_price)))
+                .with_detail("twap_price", serde_json::json!(format_currency(twap.twap_price)))
                 .with_detail("pool_id", serde_json::json!(twap.pool_id));
         }
 
@@ -254,6 +254,22 @@ impl PriceAnalyzer {
             .iter()
             .all(|s| s.pool_id == *first_pool && s.price_impact >= 100)
     }
+}
+
+fn format_currency(amount: u64) -> String {
+    let s = amount.to_string();
+    let mut res = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            res.insert(0, ',');
+        }
+        res.insert(0, c);
+    }
+    res
+}
+
+fn format_bps(bps: u64) -> String {
+    format!("{:.2}%", bps as f64 / 100.0)
 }
 
 impl Default for PriceAnalyzer {

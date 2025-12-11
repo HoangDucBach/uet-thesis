@@ -146,10 +146,10 @@ impl OracleManipulationAnalyzer {
 
         // Step 8: Create event
         let description = format!(
-            "Oracle manipulation: {}% price inflation, ${} borrow, ${} potential protocol loss",
-            price_deviation / 100,
-            borrow_amount / 1_000_000,
-            protocol_loss / 1_000_000
+            "Oracle manipulation: {:.2}% price inflation, ${} borrow, ${} potential protocol loss",
+            price_deviation as f64 / 100.0,
+            format_currency(borrow_amount / 1_000_000),
+            format_currency(protocol_loss / 1_000_000)
         );
 
         let mut event = RiskEvent::new(
@@ -166,19 +166,19 @@ impl OracleManipulationAnalyzer {
         event = event
             .with_detail(
                 "flash_loan_amount",
-                serde_json::json!(flash_loan_info.amount),
+                serde_json::json!(format_currency(flash_loan_info.amount)),
             )
             .with_detail("swap_count", serde_json::json!(large_swaps.len()))
-            .with_detail("oracle_price", serde_json::json!(oracle_price))
-            .with_detail("normal_price", serde_json::json!(normal_price))
-            .with_detail("price_deviation_bps", serde_json::json!(price_deviation))
-            .with_detail("borrow_amount", serde_json::json!(borrow_amount))
-            .with_detail("collateral_value", serde_json::json!(collateral_value))
+            .with_detail("oracle_price", serde_json::json!(format_currency(oracle_price)))
+            .with_detail("normal_price", serde_json::json!(format_currency(normal_price)))
+            .with_detail("price_deviation", serde_json::json!(format_bps(price_deviation)))
+            .with_detail("borrow_amount", serde_json::json!(format_currency(borrow_amount)))
+            .with_detail("collateral_value", serde_json::json!(format_currency(collateral_value)))
             .with_detail(
                 "real_collateral_value",
-                serde_json::json!(real_collateral_value),
+                serde_json::json!(format_currency(real_collateral_value)),
             )
-            .with_detail("protocol_loss", serde_json::json!(protocol_loss))
+            .with_detail("protocol_loss", serde_json::json!(format_currency(protocol_loss)))
             .with_detail("health_factor", serde_json::json!(health_factor))
             .with_detail("risk_score", serde_json::json!(risk_score));
 
@@ -321,6 +321,22 @@ impl OracleManipulationAnalyzer {
 
         (reserve_b_pre as u128 * 1_000_000_000 / reserve_a_pre as u128) as u64
     }
+}
+
+fn format_currency(amount: u64) -> String {
+    let s = amount.to_string();
+    let mut res = String::new();
+    for (i, c) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            res.insert(0, ',');
+        }
+        res.insert(0, c);
+    }
+    res
+}
+
+fn format_bps(bps: u64) -> String {
+    format!("{:.2}%", bps as f64 / 100.0)
 }
 
 impl Default for OracleManipulationAnalyzer {
