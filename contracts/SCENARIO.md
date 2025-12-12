@@ -1,111 +1,58 @@
-# Risk Detection System Test Scenarios
-
-## Setup Environment
-
-```bash
-source .env
-
-ATTACKER=$(sui client active-address)
-USDC_TYPE="$PACKAGE_ID::usdc::USDC"
-WETH_TYPE="$PACKAGE_ID::weth::WETH"
-ATTACK_DEX_POOL=$DEX_POOL_WETH_USDC
-ATTACK_MARKET=$MARKET_USDC
-```
+# Kịch bản Kiểm thử Hệ thống Phát hiện Rủi ro
 
 ---
 
-## Scenario 1: Simple Supply & Borrow (Benign)
+## Kịch bản 1: Vòng lặp Đòn bẩy (Rủi ro Thấp)
 
-**Description:** A normal user supplies collateral (WETH) and borrows a safe amount of USDC.
-**Expected Result:** Risk Score < 30 (Safe).
+**Mô tả:** Người dùng thực hiện chiến lược đòn bẩy: Thế chấp WETH -> Vay USDC -> Swap USDC sang WETH -> Tiếp tục thế chấp WETH.
 
-```bash
-MINT_AMOUNT=1000000000   # 10 WETH
-BORROW_AMOUNT=1000000    # 1 USDC
+**Input (Tình hình):**
 
-sui client ptb \
-    --move-call "$PACKAGE_ID::coin_factory::mint_weth" @$COIN_FACTORY_ID $MINT_AMOUNT \
-    --assign weth_coin \
-    --move-call "$PACKAGE_ID::compound_market::supply<$WETH_TYPE>" \
-        @$MARKET_WETH weth_coin @0x6 \
-    --assign position \
-    --move-call "$PACKAGE_ID::compound_market::borrow<$WETH_TYPE, $USDC_TYPE>" \
-        @$MARKET_WETH @$MARKET_USDC position @$DEX_POOL_WETH_USDC $BORROW_AMOUNT @0x6 \
-    --assign usdc_loan \
-    --transfer-objects "[position, usdc_loan]" @$ATTACKER \
-    --gas-budget 50000000 --json
-```
+- **Tài sản thế chấp ban đầu:** 50 WETH
+- **Khoản vay:** 10,000 USDC
+- **Hành động:** Vay USDC để mua thêm WETH và tái thế chấp.
+
+**Output (Kết quả mong đợi):**
+
+- **Điểm Rủi ro:** < 30 (An toàn)
+- **Lý do:** Tỷ lệ vay trên giá trị tài sản (LTV) vẫn ở mức thấp (~2%), hành động swap không gây biến động giá lớn.
 
 ---
 
-## Scenario 2: High Slippage Swap (Suspicious)
+## Kịch bản 2: Tấn công Sandwich (Rủi ro Trung bình)
 
-**Description:** A user executes a large swap that significantly impacts the DEX price, but does not exploit it.
-**Expected Result:** Risk Score 30-70 (Warning: Price Volatility).
+**Mô tả:** Attacker thực hiện tấn công Sandwich lên nạn nhân:
 
-```bash
-SWAP_AMOUNT=10000000000
+1. **Front-run:** Attacker swap lượng lớn USDC -> WETH để đẩy giá lên.
+2. **Victim Trade:** Nạn nhân swap USDC -> WETH với giá cao (bị trượt giá).
+3. **Back-run:** Attacker swap ngược WETH -> USDC để chốt lời.
 
-sui client ptb \
-    --move-call "$PACKAGE_ID::coin_factory::mint_usdc" @$COIN_FACTORY_ID $SWAP_AMOUNT \
-    --assign swap_coin \
-    --move-call "$PACKAGE_ID::simple_dex::swap_b_to_a<$WETH_TYPE,$USDC_TYPE>" \
-        @$DEX_POOL_WETH_USDC swap_coin 0 \
-    --assign weth_out \
-    --transfer-objects "[weth_out]" @$ATTACKER \
-    --gas-budget 50000000 --json
-```
+**Input (Tình hình):**
+
+- **Front-run:** Swap 200,000 USDC -> WETH (Attacker)
+- **Victim Trade:** Swap 50,000 USDC -> WETH (Nạn nhân)
+- **Back-run:** Swap 1,900 WETH -> USDC (Attacker)
+
+**Output (Kết quả mong đợi):**
+
+- **Điểm Rủi ro:** 30-70 (Cảnh báo)
+- **Lý do:** Phát hiện biến động giá bất thường trong thời gian ngắn và mô hình giao dịch kẹp lệnh (Sandwich pattern).
 
 ---
 
-## Scenario 3: Oracle Manipulation Attack (Critical)
+## Kịch bản 3: Tấn công Thao túng Oracle (Nghiêm trọng)
 
-**Description:** The full attack vector: Flash Loan -> Manipulate Oracle Price -> Borrow with inflated collateral -> Repay Flash Loan.
-**Expected Result:** Risk Score > 90 (Critical: Oracle Manipulation Detected).
+**Mô tả:** Vector tấn công đầy đủ: Flash Loan -> Thao túng giá Oracle -> Vay với tài sản thế chấp bị thổi phồng -> Trả Flash Loan.
 
-```bash
-FLASH_LOAN_AMOUNT=200000000000   # 200,000 USDC
-SWAP_AMOUNT=100000000000         # 100,000 USDC
-SUPPLY_AMOUNT=1000000000         # 10 WETH
-BORROW_AMOUNT=150000000000       # 150,000 USDC
-REPAY_AMOUNT=200180000000        # 200,000 + 0.09% fee
+**Input (Tình hình):**
 
-sui client ptb \
-    --assign flash_loan_amount $FLASH_LOAN_AMOUNT \
-    --assign swap_amount $SWAP_AMOUNT \
-    --assign supply_amount $SUPPLY_AMOUNT \
-    --assign borrow_amount $BORROW_AMOUNT \
-    --assign repay_amount $REPAY_AMOUNT \
-    \
-    --move-call "$PACKAGE_ID::flash_loan_pool::borrow_flash_loan<$USDC_TYPE>" \
-        @"$FLASH_LOAN_POOL_USDC" flash_loan_amount \
-    --assign loan_res \
-    --assign loan_coin loan_res.0 \
-    --assign receipt loan_res.1 \
-    \
-    --split-coins loan_coin "[swap_amount]" \
-    --assign swap_coin \
-    \
-    --move-call "$PACKAGE_ID::simple_dex::swap_b_to_a<$WETH_TYPE,$USDC_TYPE>" \
-        @"$ATTACK_DEX_POOL" swap_coin 0 \
-    --assign weth_out \
-    \
-    --move-call "$PACKAGE_ID::compound_market::supply<$WETH_TYPE>" \
-        @"$MARKET_WETH" weth_out @0x6 \
-    --assign position \
-    \
-    --move-call "$PACKAGE_ID::compound_market::borrow<$WETH_TYPE,$USDC_TYPE>" \
-        @"$MARKET_WETH" @"$ATTACK_MARKET" position @"$ATTACK_DEX_POOL" borrow_amount @0x6 \
-    --assign borrowed_usdc \
-    \
-    --merge-coins loan_coin "[borrowed_usdc]" \
-    \
-    --split-coins loan_coin "[repay_amount]" \
-    --assign repay_coin \
-    \
-    --move-call "$PACKAGE_ID::flash_loan_pool::repay_flash_loan<$USDC_TYPE>" \
-        @"$FLASH_LOAN_POOL_USDC" repay_coin receipt \
-    \
-    --transfer-objects "[position, loan_coin]" @$ATTACKER \
-    --gas-budget 100000000 --json
-```
+- **Flash Loan:** 200,000 USDC
+- **Thao túng giá:** Dùng 100,000 USDC swap sang WETH để đẩy giá WETH lên cao.
+- **Thế chấp:** 10 WETH (giá trị bị thổi phồng).
+- **Vay:** 150,000 USDC (dựa trên giá trị ảo).
+- **Trả nợ:** Hoàn trả Flash Loan từ tiền vay được.
+
+**Output (Kết quả mong đợi):**
+
+- **Điểm Rủi ro:** > 90 (Nghiêm trọng)
+- **Lý do:** Phát hiện thao túng Oracle (giá lệch quá lớn so với thị trường), sử dụng Flash Loan để tấn công, và tỷ lệ vay bất thường so với tài sản thực.
