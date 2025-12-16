@@ -1,0 +1,14 @@
+[package]
+name = "defi-protocol"
+version = "1.0.0"
+edition = "2024.beta"
+
+[dependencies]
+
+[addresses]
+simulation = "0x0"  # Will be replaced with actual package ID on deployment
+sui = "0000000000000000000000000000000000000000000000000000000000000002"
+
+[dev-dependencies]
+
+[dev-addresses]

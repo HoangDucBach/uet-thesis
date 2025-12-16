@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Package & Upgrade
+export PACKAGE_ID="0x18f41d08c00001b0295bcbd810e600354a84eb48bc534fbea47fa318257af7e2"
+export UPGRADE_CAP="0x89b117e2d81fcfbb963a5f1f378315066f83a8285122f4e0e56ac115f45ef27e"
+
+# Treasury Caps (for minting) - Load from .env
+export $(grep -v '^#' .env | xargs)
+
+# Create shorter aliases for convenience
+export BTC_TREASURY="$BTC_TREASURY_CAP"
+export USDC_TREASURY="$USDC_TREASURY_CAP"
+export USDT_TREASURY="$USDT_TREASURY_CAP"
+export WETH_TREASURY="$WETH_TREASURY_CAP"
+export SUI_TREASURY="$SUI_COIN_TREASURY_CAP"
+
+export BTC_META="$BTC_METADATA"
+export USDC_META="$USDC_METADATA"
+export USDT_META="$USDT_METADATA"
+export WETH_META="$WETH_METADATA"
+export SUI_META="$SUI_COIN_METADATA"
+
+# Get wallet addresses
+export ADMIN=$(sui client active-address)
+
+# Coin type paths
+export USDC_TYPE="$PACKAGE_ID::usdc::USDC"
+export USDT_TYPE="$PACKAGE_ID::usdt::USDT"
+export WETH_TYPE="$PACKAGE_ID::weth::WETH"
+export BTC_TYPE="$PACKAGE_ID::btc::BTC"
+export SUI_TYPE="$PACKAGE_ID::sui_coin::SUI_COIN"
+
+export COIN_FACTORY_ID="0x171419b29291e35c0420b3a969c1507607daa2acd2411077ead0c7878746db16"
+
+export USDC_COIN_10K="0x30258a2d82ae18194054fc47f3d0fcd8ff5868bf999bc995a1afc456058115c9"
+export FLASH_LOAN_POOL="0x9608c6db2dc57fedd46ea80eec0ef1e8a799524893f6e21d32b428673ecd2228"
+export DEX_POOL_USDC_USDT="0xf2de8b782c69c4d614baa0de31400a9d4f839284806900703d6d2901c36447f5"
+export DEX_POOL_USDT_WETH="0x9729c9123239f93959479977a2c77fe734645fc89e6622db4e6651ee9d4e751f"
+export TWAP_ORACLE="0xcfd9ca916cdd36962e9818f3118a760b2fdf5ea56bd565d5a1c82c7fcf32e37d"

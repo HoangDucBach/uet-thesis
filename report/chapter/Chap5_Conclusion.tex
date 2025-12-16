@@ -1,0 +1,262 @@
+\clearpage
+\phantomsection
+
+\setcounter{chapter}{5}
+\chapter[{KẾT LUẬN}]{Kết luận}
+
+Chương này tóm tắt những đóng góp chính của dự án, các kết quả đạt được, giới hạn của đề tài, và hướng phát triển tương lai.
+
+\section{Tóm tắt những đóng góp}
+
+\subsection{Kiến trúc hai lớp (Dual-Layer Detection)}
+
+Dự án đã đề xuất và triển khai thành công kiến trúc hai lớp kết hợp real-time detection và historical analysis:
+
+\begin{itemize}
+	\item \textbf{Lớp 1 - Realtime Detection}: Custom Indexer được viết bằng Rust, đạt độ trễ 1-2 giây, phát hiện các pattern tấn công rõ ràng ngay lập tức.
+	
+	\item \textbf{Lớp 2 - Historical Analysis}: ELK Stack cung cấp khả năng phân tích sâu dữ liệu lịch sử, phát hiện các bất thường hành vi với độ trễ <5 giây.
+	
+	\item \textbf{Proof of Effectiveness}: Kết quả thực nghiệm cho thấy detection rate 91\%, latency 1-3 giây, chứng minh tính hiệu quả của kiến trúc này.
+\end{itemize}
+
+\subsection{Multi-Signal Risk Scoring Framework}
+
+Hệ thống đánh giá rủi ro đa tín hiệu đã được thiết kế và triển khai:
+
+\begin{itemize}
+	\item Kết hợp 4 analyzer: Flash Loan (0.35), Oracle (0.30), Sandwich (0.20), Price (0.15).
+	
+	\item Flexible và tunable: Có thể điều chỉnh trọng số và thresholds dựa trên use case.
+	
+	\item Kết quả: F1-score = 0.90, cải thiện 20\% so với single-signal approach.
+\end{itemize}
+
+\subsection{Enterprise-Scale Behavioral Analysis trên Sui}
+
+Hệ thống phân tích hành vi quy mô doanh nghiệp đã được tích hợp:
+
+\begin{itemize}
+	\item Có thể truy vết toàn bộ user behavior trên Sui blockchain.
+	
+	\item Phát hiện coordinated attacks qua nhiều protocols và transactions.
+	
+	\item Proof: 75\% detection rate trên behavioral anomalies, đặc biệt hiệu quả trong phát hiện compromised accounts.
+\end{itemize}
+
+\subsection{Chứng minh tính khả thi và hiệu quả}
+
+\begin{itemize}
+	\item 4 main attack types được phát hiện thành công: Flash Loan (100\%), Oracle Manipulation (90\%), Sandwich (95\%), Behavioral (75\%).
+	
+	\item Demo thành công trên Sui Testnet với 43 test cases.
+	
+	\item Ready for production với một số cải thiện cần thiết.
+\end{itemize}
+
+\section{Những kết quả đạt được}
+
+\subsection{Giám sát near-realtime}
+
+\begin{itemize}
+	\item <5 giây trên Kibana dashboard
+	\item 1-2 giây trên Custom Indexer
+	\item Đáp ứng yêu cầu phản ứng nhanh với các mối đe dọa
+\end{itemize}
+
+\subsection{Phát hiện đa vector}
+
+Hệ thống có khả năng phát hiện:
+\begin{itemize}
+	\item Flash Loan Attacks: 100\% detection rate
+	\item Oracle Manipulation: 90\% detection rate
+	\item Sandwich Attacks: 95\% detection rate
+	\item Behavioral Anomalies: 75\% detection rate
+\end{itemize}
+
+\subsection{Automated Alerting và Response Mechanisms}
+
+\begin{itemize}
+	\item Tự động tạo alerts khi risk score vượt ngưỡng
+	\item Gửi webhook/notifications đến team bảo mật
+	\item Logging và tracking đầy đủ cho forensic analysis
+\end{itemize}
+
+\subsection{Scalable Solution}
+
+\begin{itemize}
+	\item Throughput: 1,000+ transactions/giây
+	\item Có thể scale horizontal
+	\item Resource usage hợp lý: 2-4GB RAM, 15-25\% CPU
+\end{itemize}
+
+\subsection{Enterprise-grade Visualization và Dashboard}
+
+\begin{itemize}
+	\item Kibana dashboard với real-time monitoring
+	\item Custom visualizations cho attack patterns
+	\item Root cause analysis tools
+\end{itemize}
+
+\section{Giới hạn của đề tài}
+
+\subsection{Technical Limitations}
+
+\begin{itemize}
+	\item \textbf{Chỉ test trên Sui Testnet}: Mainnet có thể có behavior khác về throughput, latency, và attack patterns.
+	
+	\item \textbf{Limited protocol coverage}: Chỉ test với 3-5 protocols, có thể không cover hết các edge cases.
+	
+	\item \textbf{False positive rate}: Vẫn còn ~4-5\%, cần human review cho một số cases.
+\end{itemize}
+
+\subsection{Scope Limitations}
+
+\begin{itemize}
+	\item \textbf{Focus on 4 main attack types}: Flash Loan, Oracle Manipulation, Sandwich, Behavioral. Có thể có các attack vectors mới chưa được cover.
+	
+	\item \textbf{Off-chain attacks}: Limited detection, đặc biệt nếu hacker không reuse address.
+	
+	\item \textbf{Cross-chain attacks}: Không được cover trong scope này.
+	
+	\item \textbf{Social engineering}: Không được cover.
+\end{itemize}
+
+\subsection{Detection Limitations}
+
+\begin{itemize}
+	\item \textbf{Behavioral analysis latency}: 5-30 giây (vs realtime detection 1-2s), do cần phân tích dữ liệu lịch sử.
+	
+	\item \textbf{New attack vectors}: Có thể không được phát hiện nếu pattern chưa được biết đến.
+	
+	\item \textbf{Zero-day exploits}: Rất khó phát hiện nếu không có signature hoặc pattern rõ ràng.
+\end{itemize}
+
+\subsection{Resource Limitations}
+
+\begin{itemize}
+	\item \textbf{Requires significant infrastructure}: Cần server với RAM và CPU đủ mạnh.
+	
+	\item \textbf{High storage costs}: 50GB cho 1 triệu transactions, có thể tăng nhanh với dữ liệu lịch sử dài hạn.
+	
+	\item \textbf{Computational overhead}: Behavioral analysis đòi hỏi tính toán phức tạp.
+\end{itemize}
+
+\section{Hướng phát triển tương lai}
+
+\subsection{Mainnet Deployment và Production Hardening}
+
+\begin{itemize}
+	\item Scale to production trên Sui mainnet với real user funds.
+	
+	\item Multi-protocol monitoring: Mở rộng coverage đến nhiều protocols hơn.
+	
+	\item Redundancy và high availability: Deploy multiple indexer instances với load balancing.
+	
+	\item Disaster recovery planning: Backup và restore strategies.
+\end{itemize}
+
+\subsection{Machine Learning Integration}
+
+\begin{itemize}
+	\item \textbf{Anomaly detection models}: 
+		\begin{itemize}
+			\item Isolation Forest cho phát hiện outliers
+			\item DBSCAN cho clustering bất thường
+		\end{itemize}
+	
+	\item \textbf{Time series forecasting}:
+		\begin{itemize}
+			\item LSTM để dự đoán price movements
+			\item Prophet cho trend analysis
+		\end{itemize}
+	
+	\item \textbf{Attack pattern classification}:
+		\begin{itemize}
+			\item Neural Networks để phân loại attack types
+			\item Transfer learning từ các blockchain khác
+		\end{itemize}
+	
+	\item \textbf{Continuous model retraining}: Tự động cập nhật models với dữ liệu mới.
+\end{itemize}
+
+\subsection{Cross-Chain Monitoring}
+
+\begin{itemize}
+	\item Extend to other chains: Aptos (cùng Move language), Ethereum, Solana, etc.
+	
+	\item Cross-chain attack detection: Phát hiện các tấn công xuyên qua nhiều blockchains.
+	
+	\item Unified dashboard: Một dashboard cho tất cả các chains.
+\end{itemize}
+
+\subsection{Predictive Threat Intelligence}
+
+\begin{itemize}
+	\item \textbf{Predict upcoming attacks}: Sử dụng ML để dự đoán các cuộc tấn công sắp xảy ra.
+	
+	\item \textbf{Vulnerability forecasting}: Phân tích code và dự đoán vulnerabilities.
+	
+	\item \textbf{Risk scoring improvement}: Cải thiện accuracy của risk scoring với ML.
+\end{itemize}
+
+\subsection{Community và Governance Integration}
+
+\begin{itemize}
+	\item \textbf{DAO governance integration}: Tích hợp với DAO để tự động phản ứng với threats.
+	
+	\item \textbf{Community threat reporting}: Cho phép community report threats.
+	
+	\item \textbf{Crowdsourced attack detection}: Kết hợp với human intelligence.
+\end{itemize}
+
+\subsection{Advanced Automated Responses}
+
+\begin{itemize}
+	\item \textbf{Automatic contract pause mechanisms}: Tự động pause protocol khi phát hiện critical threat.
+	
+	\item \textbf{Dynamic parameter adjustment}: Tự động điều chỉnh protocol parameters để giảm thiểu rủi ro.
+	
+	\item \textbf{Liquidity protection measures}: Tự động move liquidity đến safe pools.
+	
+	\item \textbf{Insurance integration}: Tích hợp với DeFi insurance protocols.
+\end{itemize}
+
+\subsection{Zero-Knowledge Proof Integration}
+
+\begin{itemize}
+	\item \textbf{Privacy-preserving detection}: Phát hiện threats mà không expose user data.
+	
+	\item \textbf{Confidential analysis}: Phân tích dữ liệu nhạy cảm với ZK proofs.
+	
+	\item \textbf{Regulatory compliance}: Đáp ứng các yêu cầu về privacy regulations.
+\end{itemize}
+
+\subsection{Expansion to DeFi Protocols}
+
+\begin{itemize}
+	\item \textbf{Partnership with major protocols}: Tích hợp trực tiếp với các DeFi protocols lớn.
+	
+	\item \textbf{Protocol-specific detectors}: Custom detectors cho từng protocol.
+	
+	\item \textbf{Custom risk models}: Risk models được tùy chỉnh cho từng protocol.
+\end{itemize}
+
+\section{Kết luận cuối cùng}
+
+DeFi tiếp tục phát triển mạnh mẽ với TVL đạt \$120-150 tỷ USD, nhưng đi kèm với đó là sự gia tăng của các cuộc tấn công phức tạp, đặc biệt là compromised accounts chiếm >50\% số vụ tấn công. Các công cụ bảo mật hiện tại chủ yếu tập trung vào giám sát ở mức từng protocol, dễ bỏ sót các tấn công phối hợp phức tạp.
+
+Dự án này đã đề xuất và triển khai thành công hệ thống MDRDS - một giải pháp toàn diện cho giám sát và phát hiện rủi ro DeFi trên blockchain Sui. Với kiến trúc hai lớp kết hợp real-time detection và historical behavioral analysis, hệ thống đạt được detection rate 91\%, latency 1-5 giây, và throughput >1,000 transactions/giây.
+
+Những đóng góp chính của dự án bao gồm:
+\begin{itemize}
+	\item Kiến trúc hai lớp độc đáo tận dụng ưu điểm của cả real-time và historical analysis
+	\item Multi-signal risk scoring framework linh hoạt và hiệu quả
+	\item Enterprise-scale behavioral analysis trên Sui blockchain
+	\item Chứng minh tính khả thi qua thực nghiệm với 43 test cases
+\end{itemize}
+
+Hệ thống MDRDS cung cấp một giải pháp mạnh mẽ, khả thi cho việc bảo vệ hệ sinh thái DeFi trên Sui, và có tiềm năng mở rộng sang các blockchain khác trong tương lai. Với các cải tiến về machine learning, cross-chain monitoring, và automated responses, hệ thống có thể trở thành một công cụ quan trọng trong việc đảm bảo an ninh cho toàn bộ hệ sinh thái DeFi.
+
+Cuối cùng, dự án này nhấn mạnh tầm quan trọng của việc phát triển các công cụ bảo mật toàn diện cho DeFi, đặc biệt là trong bối cảnh các cuộc tấn công ngày càng tinh vi và phức tạp. Cần có sự hợp tác giữa các nhà nghiên cứu, developers, và cộng đồng để xây dựng một hệ sinh thái DeFi an toàn và bền vững hơn.
+

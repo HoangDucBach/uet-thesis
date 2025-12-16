@@ -1,0 +1,1 @@
+docker compose up postgres es-master es-data-1 es-data-2 kibana logstash -d

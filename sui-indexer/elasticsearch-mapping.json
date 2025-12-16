@@ -1,0 +1,190 @@
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "refresh_interval": "10s",
+    "index": {
+      "mapping": {
+        "total_fields": {
+          "limit": 2000
+        }
+      },
+      "max_result_window": 100000
+    },
+    "analysis": {
+      "analyzer": {
+        "sui_address_analyzer": {
+          "type": "custom",
+          "tokenizer": "keyword",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "tx_digest": {
+        "type": "keyword"
+      },
+      "checkpoint_sequence_number": {
+        "type": "long"
+      },
+      "timestamp": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+      "sender": {
+        "type": "keyword",
+        "fields": {
+          "text": {
+            "type": "text",
+            "analyzer": "sui_address_analyzer"
+          }
+        }
+      },
+      "gas_owner": {
+        "type": "keyword"
+      },
+      "gas_budget": {
+        "type": "long"
+      },
+      "gas_used": {
+        "type": "long"
+      },
+      "gas_price": {
+        "type": "long"
+      },
+      "execution_status": {
+        "type": "keyword"
+      },
+      "kind": {
+        "type": "keyword"
+      },
+      "is_system_tx": {
+        "type": "boolean"
+      },
+      "is_sponsored_tx": {
+        "type": "boolean"
+      },
+      "is_end_of_epoch_tx": {
+        "type": "boolean"
+      },
+      "package_ids": {
+        "type": "keyword"
+      },
+      "module_names": {
+        "type": "keyword"
+      },
+      "function_names": {
+        "type": "keyword"
+      },
+      "full_function_calls": {
+        "type": "keyword",
+        "fields": {
+          "text": {
+            "type": "text"
+          }
+        }
+      },
+      "input_object_ids": {
+        "type": "keyword"
+      },
+      "shared_object_ids": {
+        "type": "keyword"
+      },
+      "receiving_object_ids": {
+        "type": "keyword"
+      },
+      "total_objects": {
+        "type": "integer"
+      },
+      "coin_types_involved": {
+        "type": "keyword"
+      },
+      "max_balance_change": {
+        "type": "long"
+      },
+      "total_balance_changes": {
+        "type": "integer"
+      },
+      "net_balance_change": {
+        "type": "long"
+      },
+      "function_count": {
+        "type": "integer"
+      },
+      "package_count": {
+        "type": "integer"
+      },
+      "object_count": {
+        "type": "integer"
+      },
+      "complexity_factor": {
+        "type": "integer"
+      },
+      "hour_of_day": {
+        "type": "byte"
+      },
+      "day_of_week": {
+        "type": "byte"
+      },
+      "day_of_month": {
+        "type": "byte"
+      },
+      "month": {
+        "type": "byte"
+      },
+      "year": {
+        "type": "short"
+      },
+      "move_calls": {
+        "type": "nested",
+        "properties": {
+          "package": {
+            "type": "keyword"
+          },
+          "module": {
+            "type": "keyword"
+          },
+          "function": {
+            "type": "keyword"
+          },
+          "type_args": {
+            "type": "keyword"
+          },
+          "sequence": {
+            "type": "integer"
+          }
+        }
+      },
+      "object_interactions": {
+        "type": "nested",
+        "properties": {
+          "object_id": {
+            "type": "keyword"
+          },
+          "object_type": {
+            "type": "keyword"
+          },
+          "interaction_type": {
+            "type": "keyword"
+          }
+        }
+      },
+      "balance_changes": {
+        "type": "nested",
+        "properties": {
+          "coin_type": {
+            "type": "keyword"
+          },
+          "amount": {
+            "type": "long"
+          },
+          "owner": {
+            "type": "keyword"
+          }
+        }
+      }
+    }
+  }
+}

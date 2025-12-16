@@ -1,0 +1,602 @@
+\clearpage
+\phantomsection
+
+\setcounter{chapter}{2}
+\chapter[{PHƯƠNG PHÁP VÀ KIẾN TRÚC HỆ THỐNG}]{Phương pháp và kiến trúc hệ thống}
+
+Chương này trình bày chi tiết về phương pháp và kiến trúc của hệ thống MDRDS, bao gồm tổng quan giải pháp, kiến trúc hệ thống, các analyzer, và quy trình phát hiện tấn công.
+
+\section{Tổng quan giải pháp}
+
+\subsection{Mô tả bài toán}
+
+Bài toán cần giải quyết là xây dựng một hệ thống có khả năng:
+
+\begin{enumerate}
+	\item \textbf{Giám sát real-time}: Phát hiện các cuộc tấn công DeFi ngay khi chúng xảy ra, với độ trễ tối thiểu.
+	\item \textbf{Phát hiện đa vector}: Có thể phát hiện nhiều loại tấn công khác nhau, từ flash loan đến compromised wallet.
+	\item \textbf{Phân tích hành vi}: Sử dụng dữ liệu lịch sử để phát hiện các bất thường trong hành vi người dùng.
+	\item \textbf{Tích hợp với Sui}: Tận dụng các đặc điểm kiến trúc của Sui để tối ưu hóa hiệu suất.
+\end{enumerate}
+
+\subsection{Yêu cầu hệ thống}
+
+\textbf{Functional Requirements}:
+
+\begin{itemize}
+	\item Giám sát real-time các transactions và events trên Sui blockchain.
+	\item Phát hiện 4 loại tấn công chính: Flash Loan, Oracle Manipulation, Sandwich, và Behavioral Anomalies.
+	\item Tính toán risk score cho mỗi transaction/protocol.
+	\item Gửi alerts khi risk score vượt ngưỡng.
+	\item Cung cấp dashboard để visualize dữ liệu và alerts.
+	\item Hỗ trợ query và phân tích dữ liệu lịch sử.
+	\end{itemize}
+
+\textbf{Non-functional Requirements}:
+
+	\begin{itemize}
+	\item \textbf{Latency}: <5 giây trên Kibana, 1-2 giây trên Custom Indexer.
+	\item \textbf{Scalability}: Có thể xử lý >1,000 transactions/giây.
+	\item \textbf{Availability}: Hệ thống phải hoạt động 24/7 với uptime >99\%.
+	\item \textbf{Accuracy}: Detection rate >90\%, false positive rate <5\%.
+	\item \textbf{Maintainability}: Code dễ đọc, dễ bảo trì, có documentation đầy đủ.
+\end{itemize}
+
+\subsection{Tại sao cần kiến trúc hai lớp}
+
+Kiến trúc hai lớp được thiết kế để tận dụng ưu điểm của cả real-time detection và historical analysis:
+
+\begin{itemize}
+	\item \textbf{Lớp 1 (Realtime Detection)}: Xử lý nhanh, phát hiện các pattern đơn giản và rõ ràng ngay lập tức. Phù hợp cho các tấn công có pattern dễ nhận biết như flash loan.
+	
+	\item \textbf{Lớp 2 (Historical Analysis)}: Phân tích sâu hơn, cần dữ liệu lịch sử để phát hiện các bất thường. Phù hợp cho behavioral analysis và phát hiện các tấn công phối hợp phức tạp.
+	
+	\item \textbf{Bổ sung lẫn nhau}: Khi một lớp phát hiện một dấu hiệu nghi ngờ, có thể trigger phân tích sâu hơn ở lớp kia.
+\end{itemize}
+
+\section{Kiến trúc hệ thống tổng quan}
+
+Hình \ref{fig:system_architecture} mô tả kiến trúc tổng quan của hệ thống MDRDS.
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[node distance=1.5cm, auto]
+	% Nodes
+	\node[block, align=center] (sui) {Sui Fullnode \\ (Testnet)};
+	\node[block, align=center, below left=of sui] (indexer) {Custom Indexer \\ (Rust)};
+	\node[block, align=center, below=of indexer] (postgres) {PostgreSQL \\ (State)};
+	\node[block, below right=of sui] (elk) {ELK Stack};
+	\node[block, align=center, below=of elk] (es) {Elasticsearch \\ (Indexing)};
+	\node[block, align=center, below=of es] (kibana) {Kibana \\ (Visualization)};
+	
+	% Analyzers
+	\node[block, align=center, below left=of indexer] (oracle) {Oracle \\ Analyzer};
+	\node[block, align=center, left=of oracle] (flashloan) {Flash Loan \\ Analyzer};
+	\node[block, align=center, below=of oracle] (sandwich) {Sandwich \\ Analyzer};
+	\node[block, align=center, left=of sandwich] (price) {Price \\ Analyzer};
+	\node[block, align=center, below=of indexer] (scorer) {Risk \\ Scorer};
+	
+	% Connections
+	\draw[connector] (sui) -- (indexer);
+	\draw[connector] (sui) -- (elk);
+	\draw[connector] (indexer) -- (postgres);
+	\draw[connector] (indexer) -- (oracle);
+	\draw[connector] (indexer) -- (flashloan);
+	\draw[connector] (indexer) -- (sandwich);
+	\draw[connector] (indexer) -- (price);
+	\draw[connector] (oracle) -- (scorer);
+	\draw[connector] (flashloan) -- (scorer);
+	\draw[connector] (sandwich) -- (scorer);
+	\draw[connector] (price) -- (scorer);
+	\draw[connector] (scorer) -- (elk);
+	\draw[connector] (elk) -- (es);
+	\draw[connector] (es) -- (kibana);
+\end{tikzpicture}
+\caption{Kiến trúc tổng quan hệ thống MDRDS}
+\label{fig:system_architecture}
+\end{figure}
+
+\subsection{Mô tả chi tiết từng thành phần}
+
+\textbf{Sui Fullnode}: Cung cấp dữ liệu blockchain, hệ thống subscribe vào events và transactions theo thời gian thực.
+
+\textbf{Custom Indexer}: 
+\begin{itemize}
+	\item Kết nối với Sui Fullnode để nhận dữ liệu real-time.
+	\item Parse events và transactions.
+	\item Lưu trữ state vào database để tracking.
+	\item Chạy 4 analyzer song song để phát hiện các loại tấn công.
+	\item Tính toán risk score tổng hợp.
+	\item Gửi alerts đến ELK Stack.
+\end{itemize}
+
+\textbf{PostgreSQL}: Lưu trữ state tracking (flash loans, risk scores, alerts, user baselines).
+
+\textbf{ELK Stack}:
+\begin{itemize}
+	\item \textbf{Elasticsearch}: Index và lưu trữ dữ liệu để query và phân tích.
+	\item \textbf{Kibana}: Dashboard để visualize và monitor.
+\end{itemize}
+
+\subsection{Luồng dữ liệu (Data Flow)}
+
+Luồng dữ liệu từ Sui đến Detection và Alert:
+
+\begin{enumerate}
+	\item \textbf{Sui Fullnode} emit events và transactions mới.
+	\item \textbf{Custom Indexer} nhận dữ liệu qua WebSocket.
+	\item Indexer parse và lưu vào PostgreSQL (state tracking).
+	\item 4 \textbf{Analyzers} xử lý song song:
+		\begin{itemize}
+			\item Oracle Analyzer: Kiểm tra price deviation.
+			\item Flash Loan Analyzer: Theo dõi flash loan pattern.
+			\item Sandwich Analyzer: Phát hiện MEV extraction.
+			\item Price Analyzer: Phân tích price movements.
+		\end{itemize}
+	\item \textbf{Risk Scorer} tổng hợp signals từ các analyzer.
+	\item Nếu risk score > threshold:
+		\begin{itemize}
+			\item Tạo alert.
+			\item Gửi đến ELK Stack.
+			\item Log vào PostgreSQL.
+		\end{itemize}
+	\item \textbf{ELK Stack} index dữ liệu và hiển thị trên Kibana.
+	\item User xem alerts và phân tích trên Kibana dashboard.
+\end{enumerate}
+
+\subsection{Tương tác giữa các thành phần}
+
+\begin{itemize}
+	\item Indexer đọc/ghi state vào PostgreSQL để tracking qua nhiều blocks.
+	\item Indexer gửi dữ liệu đến analyzers, nhận risk signals.
+	\item Risk Scorer tổng hợp signals từ các analyzer thành risk score tổng.
+	\item Indexer gửi alerts và dữ liệu đến Elasticsearch.
+	\item Kibana query Elasticsearch để hiển thị trên dashboard.
+\end{itemize}
+
+\section{Lớp 1: Realtime Detection (Custom Indexer)}
+
+\subsection{Oracle Manipulation Analyzer}
+
+\textbf{Mục đích}: Phát hiện các thao túng giá oracle, đặc biệt là khi giá oracle lệch đáng kể so với TWAP hoặc spot price thực tế.
+
+\textbf{Metrics}:
+
+\begin{itemize}
+	\item \textbf{TWAP Deviation}: Độ lệch giữa Time-Weighted Average Price và giá hiện tại.
+		\begin{equation}
+		\text{Deviation} = \frac{|\text{Spot Price} - \text{TWAP}|}{\text{TWAP}} \times 100\%
+		\end{equation}
+	\item \textbf{Health Factor (HF)}: Tỷ lệ giữa collateral value và borrowed value trong lending protocol. HF giảm đột ngột có thể là dấu hiệu của price manipulation.
+		\begin{equation}
+		\text{HF} = \frac{\text{Collateral Value}}{\text{Borrowed Value}}
+		\end{equation}
+	\item \textbf{Protocol Loss Estimation}: Ước tính tổn thất tiềm năng của protocol nếu manipulation thành công.
+\end{itemize}
+
+\textbf{Logic phát hiện}:
+
+\begin{algorithmic}
+\If{price\_deviation > THRESHOLD\_PRICE \textbf{AND} HF\_drop > THRESHOLD\_HF}
+	\State risk\_score = HIGH
+	\State trigger\_alert("Oracle Manipulation Detected")
+\EndIf
+\end{algorithmic}
+
+\textbf{Thresholds}: 
+\begin{itemize}
+	\item Price deviation > 10\%: MEDIUM risk
+	\item Price deviation > 20\%: HIGH risk
+	\item Price deviation > 50\%: CRITICAL risk
+	\item HF drop > 20\%: HIGH risk
+\end{itemize}
+
+\subsection{Flash Loan Analyzer}
+
+\textbf{Mục đích}: Phát hiện các flash loan exploits bằng cách theo dõi pattern: Loan Initiated → Exploit Executed → Loan Repaid trong cùng một transaction hoặc block.
+
+\textbf{Pattern Detection}:
+
+\begin{enumerate}
+	\item \textbf{Loan Initiated}: Phát hiện event \texttt{FlashLoanBorrowed} với amount lớn.
+	\item \textbf{Exploit Executed}: Theo dõi các giao dịch giữa borrow và repay:
+		\begin{itemize}
+			\item Large swaps trên DEX.
+			\item Price manipulation.
+			\item Liquidation calls.
+		\end{itemize}
+	\item \textbf{Loan Repaid}: Phát hiện event \texttt{FlashLoanRepaid} với cùng loan\_id.
+\end{enumerate}
+
+\textbf{Stateful Detection}: Sử dụng PostgreSQL để tracking:
+
+\begin{itemize}
+	\item \texttt{flash\_loans} table: lưu loan\_id, amount, borrower, timestamp.
+	\item Khi có repay event, query lại loan tương ứng.
+	\item Tính toán profit nếu có.
+\end{itemize}
+
+\textbf{Logic phát hiện}:
+
+\begin{algorithmic}
+\State loan = find\_loan\_by\_id(loan\_id)
+\If{loan \textbf{AND} loan.repaid\_in\_same\_block}
+	\State transactions = get\_transactions\_between(loan.borrow\_time, loan.repay\_time)
+	\State profit = calculate\_profit(transactions)
+	\If{profit > THRESHOLD\_PROFIT}
+		\State risk\_score = CRITICAL
+		\State trigger\_alert("Flash Loan Exploit Detected")
+	\EndIf
+\EndIf
+\end{algorithmic}
+
+\subsection{Sandwich Analyzer}
+
+\textbf{Mục đích}: Phát hiện front-run + victim + back-run pattern trong cùng một block.
+
+\textbf{Pattern Matching}: Dựa trên checkpoint-based analysis:
+
+\begin{enumerate}
+	\item Nhóm transactions theo block.
+	\item Tìm các transaction có:
+		\begin{itemize}
+			\item Cùng sender address.
+			\item Gas price cao (front-run và back-run).
+			\item Transaction ở giữa có gas price thấp hơn (victim).
+		\end{itemize}
+	\item Kiểm tra nếu các transaction này liên quan đến cùng một pool/token.
+	\item Tính toán MEV extraction.
+\end{enumerate}
+
+\textbf{Logic phát hiện}:
+
+\begin{algorithmic}
+\For{each block in recent\_blocks}
+	\State transactions = get\_transactions\_in\_block(block)
+	\State victim = find\_low\_gas\_tx(transactions)
+	\If{victim}
+		\State front\_runner = find\_high\_gas\_tx\_before(victim)
+		\State back\_runner = find\_high\_gas\_tx\_after(victim)
+		\If{front\_runner \textbf{AND} back\_runner \textbf{AND} same\_sender(front\_runner, back\_runner)}
+			\State mev = calculate\_mev\_extraction(front\_runner, victim, back\_runner)
+			\If{mev > THRESHOLD\_MEV}
+				\State risk\_score = HIGH
+				\State trigger\_alert("Sandwich Attack Detected")
+			\EndIf
+		\EndIf
+	\EndIf
+\EndFor
+\end{algorithmic}
+
+\subsection{Price Analyzer}
+
+\textbf{Metrics}:
+
+\begin{itemize}
+	\item \textbf{TWAP Deviation}: Tương tự Oracle Analyzer.
+	\item \textbf{Trade-to-Liquidity Ratio}: Tỷ lệ giữa giá trị giao dịch và tổng liquidity của pool.
+		\begin{equation}
+		\text{Ratio} = \frac{\text{Trade Amount}}{\text{Total Liquidity}}
+		\end{equation}
+	\item \textbf{Price Impact}: Mức độ ảnh hưởng của giao dịch lên giá.
+		\begin{equation}
+		\text{Impact} = \frac{|\text{Price After} - \text{Price Before}|}{\text{Price Before}} \times 100\%
+		\end{equation}
+\end{itemize} 
+
+\textbf{Logic phát hiện}:
+
+\begin{algorithmic}
+\If{trade\_to\_liquidity\_ratio > 0.1 \textbf{OR} price\_impact > 5\%}
+	\State risk\_score = MEDIUM
+	\If{price\_impact > 10\%}
+		\State risk\_score = HIGH
+	\EndIf
+\EndIf
+\end{algorithmic}
+
+\subsection{Risk Scoring Engine}
+
+\textbf{Multi-signal Scoring}: Tổng hợp signals từ các analyzer:
+
+\begin{equation}
+\text{Risk\_Score} = \frac{\sum_{i=1}^{n} w_i \times \text{signal}_i}{\sum_{i=1}^{n} w_i}
+\end{equation}
+
+Trong đó:
+\begin{itemize}
+	\item $w_i$: Trọng số của analyzer thứ $i$.
+	\item $\text{signal}_i$: Risk signal từ analyzer thứ $i$ (0-100).
+\end{itemize}
+
+\textbf{Trọng số mặc định}:
+\begin{itemize}
+	\item Flash Loan: 0.35 (quan trọng nhất)
+	\item Oracle Manipulation: 0.30
+	\item Sandwich: 0.20
+	\item Price: 0.15
+\end{itemize}
+
+\textbf{Risk Levels}:
+\begin{itemize}
+	\item \textbf{LOW}: Risk score < 30
+	\item \textbf{MEDIUM}: 30 $\leq$ Risk score < 60
+	\item \textbf{HIGH}: 60 $\leq$ Risk score < 80
+	\item \textbf{CRITICAL}: Risk score $\geq$ 80
+\end{itemize}
+
+\section{Lớp 2: Historical Analysis \& Behavioral Tracing (ELK)}
+
+\subsection{Ingestion Pipeline}
+
+\textbf{Thu thập dữ liệu từ Sui Fullnode}:
+
+\begin{itemize}
+	\item Sử dụng Sui RPC API để query transactions và events.
+	\item Batch processing: Thu thập theo batch để tối ưu hiệu suất.
+	\item Rate limiting: Tránh overload Sui Fullnode.
+\end{itemize}
+
+\textbf{Lọc và Transform}:
+
+\begin{itemize}
+	\item Lọc các transactions không liên quan đến DeFi.
+	\item Transform dữ liệu thành format chuẩn cho Elasticsearch.
+	\item Enrich dữ liệu: Thêm metadata như protocol name, token symbols.
+\end{itemize}
+
+\textbf{Độ trễ}: <5 giây từ khi transaction được confirm đến khi có trong Elasticsearch.
+
+\subsection{Data Storage \& Indexing (Elasticsearch)}
+
+\textbf{Schema Design}:
+
+\begin{itemize}
+	\item \textbf{transaction\_index}: Lưu trữ tất cả transactions
+		\begin{itemize}
+			\item Fields: tx\_hash, timestamp, from, to, amount, gas\_price, events, risk\_score
+		\end{itemize}
+	\item \textbf{event\_index}: Lưu trữ events từ smart contracts
+		\begin{itemize}
+			\item Fields: event\_type, contract\_address, data, timestamp
+		\end{itemize}
+	\item \textbf{alert\_index}: Lưu trữ các alerts đã phát hiện
+		\begin{itemize}
+			\item Fields: alert\_id, timestamp, risk\_score, attack\_type, description, tx\_hash
+		\end{itemize}
+\end{itemize}
+
+\textbf{Index Rotation Strategy}:
+
+\begin{itemize}
+	\item Daily rotation: Mỗi ngày tạo index mới (ví dụ: transactions-2025-01-15).
+	\item Giữ dữ liệu 90 ngày trong hot storage.
+	\item Archive dữ liệu cũ hơn vào cold storage.
+\end{itemize}
+
+\subsection{Query \& Analysis (Elasticsearch DSL)}
+
+\textbf{Phát hiện Wash Trading}:
+
+\begin{verbatim}
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "from": "address_A" } },
+        { "match": { "to": "address_B" } }
+      ],
+      "must_not": [
+        { "exists": { "field": "reverse_transaction" } }
+      ]
+    }
+  },
+  "aggs": {
+    "repeated_pairs": {
+      "terms": {
+        "field": "from_to_pair",
+        "min_doc_count": 10
+      }
+    }
+  }
+}
+\end{verbatim}
+
+\textbf{Phát hiện Money Laundering}:
+
+\begin{verbatim}
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "from": "suspicious_address" } }
+      ]
+    }
+  },
+  "aggs": {
+    "transaction_chain": {
+      "terms": {
+        "field": "to",
+        "size": 100
+      },
+      "aggs": {
+        "sub_chain": {
+          "terms": {
+            "field": "to",
+            "size": 10
+          }
+        }
+      }
+    }
+  }
+}
+\end{verbatim}
+
+\textbf{Phát hiện Coordinated Attacks}:
+
+\begin{verbatim}
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "range": { "timestamp": { "gte": "now-1h" } } },
+        { "terms": { "protocol": ["protocol_A", "protocol_B", "protocol_C"] } }
+      ]
+    }
+  },
+  "aggs": {
+    "by_sender": {
+      "terms": {
+        "field": "from",
+        "size": 20
+      },
+      "aggs": {
+        "protocols": {
+          "terms": { "field": "protocol" }
+        }
+      }
+    }
+  }
+}
+\end{verbatim}
+
+\subsection{Aggregations \& Statistics}
+
+\textbf{Extended Stats}: Tính toán các thống kê mở rộng:
+
+\begin{itemize}
+	\item Mean, standard deviation, min, max.
+	\item Percentiles: p50, p95, p99.
+	\item Cardinality: Số lượng địa chỉ unique.
+\end{itemize}
+
+\textbf{Time-series Aggregation}: Phân tích xu hướng theo thời gian:
+
+\begin{verbatim}
+{
+  "aggs": {
+    "risk_over_time": {
+      "date_histogram": {
+        "field": "timestamp",
+        "calendar_interval": "1m"
+      },
+      "aggs": {
+        "avg_risk": {
+          "avg": { "field": "risk_score" }
+        }
+      }
+    }
+  }
+}
+\end{verbatim}
+
+\textbf{Anomaly Detection}: Sử dụng statistical methods:
+
+\begin{itemize}
+	\item Z-score: Phát hiện giá trị bất thường (>3$\sigma$).
+	\item Percentile ranking: Phát hiện các giá trị nằm ngoài percentile bình thường.
+\end{itemize}
+
+\subsection{Visualization (Kibana)}
+
+\textbf{Dashboards}:
+
+\begin{itemize}
+	\item \textbf{Real-time Overview}: Hiển thị số lượng transactions, alerts, risk score distribution theo thời gian thực.
+	\item \textbf{Detection Dashboard}: Chi tiết về các alerts đã phát hiện, phân loại theo attack type.
+	\item \textbf{Performance Dashboard}: Metrics về hiệu suất hệ thống (latency, throughput, error rate).
+\end{itemize}
+
+\textbf{Lens}: Công cụ drag-and-drop để tạo visualizations nhanh chóng:
+\begin{itemize}
+	\item Line charts: Risk score trends.
+	\item Pie charts: Attack type distribution.
+	\item Tables: Top risky addresses/protocols.
+\end{itemize}
+
+\textbf{TSVB}: Time Series Visual Builder cho phân tích time-series:
+\begin{itemize}
+	\item Moving averages.
+	\item Anomaly detection visualization.
+	\item Forecast trends.
+\end{itemize}
+
+\subsection{Alerting \& Actions}
+
+\textbf{Alert Rules}:
+
+\begin{itemize}
+	\item Khi risk\_score > 80 (CRITICAL): Gửi alert ngay lập tức.
+	\item Khi có >5 HIGH risk transactions trong 1 phút: Gửi alert.
+	\item Khi phát hiện flash loan exploit: Gửi alert với priority cao.
+\end{itemize}
+
+\textbf{Actions}:
+
+\begin{itemize}
+	\item \textbf{Webhook}: Gửi HTTP POST request đến endpoint tùy chỉnh.
+	\item \textbf{Email/Slack}: Gửi notification đến team bảo mật.
+	\item \textbf{Logging}: Ghi log vào file hoặc database.
+	\item \textbf{Automated Response} (future): Tự động pause protocol nếu cần.
+\end{itemize} 
+
+\section{Quy trình phát hiện tấn công (Attack Detection Flow)}
+
+Quy trình phát hiện tấn công được mô tả trong Hình \ref{fig:detection_flow}:
+
+\begin{figure}[!htb]
+\centering
+\begin{tikzpicture}[node distance=1.2cm, auto]
+	\node[block, align=center] (sui) {Sui Fullnode \\ emits events};
+	\node[block, align=center, below=of sui] (indexer) {Custom Indexer \\ captures events};
+	\node[block, align=center, below=of indexer] (analyzers) {4 Analyzers \\ process in parallel};
+	\node[block, align=center, below=of analyzers] (scorer) {Risk Scorer \\ aggregates signals};
+	\node[block, align=center, below=of scorer] (check) {risk\_score > \\ ALERT\_THRESHOLD?};
+	\node[block, align=center, below left=of check] (alert) {Trigger alert \\ Send webhook};
+	\node[block, align=center, below right=of check] (log) {Log to \\ Elasticsearch};
+	\node[block, align=center, below=of alert] (kibana) {Kibana \\ dashboard};
+	\node[block, align=center, below=of kibana] (analysis) {Root cause \\ analysis};
+	
+	\draw[connector] (sui) -- (indexer);
+	\draw[connector] (indexer) -- (analyzers);
+	\draw[connector] (analyzers) -- (scorer);
+	\draw[connector] (scorer) -- (check);
+	\draw[connector] (check) -- node[left] {Yes} (alert);
+	\draw[connector] (check) -- node[right] {No} (log);
+	\draw[connector] (alert) -- (kibana);
+	\draw[connector] (log) -- (kibana);
+	\draw[connector] (kibana) -- (analysis);
+\end{tikzpicture}
+\caption{Quy trình phát hiện tấn công}
+\label{fig:detection_flow}
+\end{figure}
+
+\textbf{Chi tiết các bước}:
+
+\begin{enumerate}
+	\item \textbf{Sui Fullnode emits events}: Khi có transaction mới trên blockchain, Sui Fullnode emit các events tương ứng.
+	
+	\item \textbf{Custom Indexer captures events}: Indexer subscribe vào events qua WebSocket và nhận dữ liệu real-time.
+	
+	\item \textbf{4 Analyzers process in parallel}: Mỗi analyzer xử lý dữ liệu độc lập và trả về risk signal.
+	
+	\item \textbf{Risk Scorer aggregates signals}: Tổng hợp các signals với trọng số để tính risk score tổng.
+	
+	\item \textbf{Check threshold}: Nếu risk score > ALERT\_THRESHOLD (mặc định: 60):
+\begin{itemize}
+			\item Tạo alert với thông tin chi tiết.
+			\item Gửi webhook/notification.
+			\item Log vào Elasticsearch.
+\end{itemize} 
+
+	\item \textbf{User opens Kibana dashboard}: Xem alerts và dữ liệu real-time.
+
+	\item \textbf{Query historical data}: Sử dụng Elasticsearch DSL để truy vết root cause:
+\begin{itemize}
+			\item Tìm tất cả transactions liên quan.
+			\item Phân tích luồng tài sản.
+			\item Xác định điểm bắt đầu của cuộc tấn công.
+\end{itemize}
+
+	\item \textbf{Optional: Execute automated responses}: Trong tương lai, có thể tự động pause protocol hoặc thực hiện các biện pháp bảo vệ khác.
+\end{enumerate}

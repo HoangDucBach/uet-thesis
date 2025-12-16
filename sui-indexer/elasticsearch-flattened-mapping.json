@@ -1,0 +1,93 @@
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "refresh_interval": "5s"
+  },
+  "mappings": {
+    "properties": {
+      "_comment": "Flattened for fast search and aggregation",
+
+      "tx_digest": {
+        "type": "keyword"
+      },
+      "checkpoint_sequence_number": {
+        "type": "long"
+      },
+      "timestamp": {
+        "type": "date",
+        "format": "epoch_millis"
+      },
+
+      "sender": {
+        "type": "keyword"
+      },
+      "execution_status": {
+        "type": "keyword"
+      },
+
+      "gas": {
+        "properties": {
+          "owner": { "type": "keyword" },
+          "budget": { "type": "long" },
+          "price": { "type": "long" },
+          "used": { "type": "long" },
+          "computation_cost": { "type": "long" },
+          "storage_cost": { "type": "long" },
+          "storage_rebate": { "type": "long" }
+        }
+      },
+
+      "move_calls": {
+        "type": "nested",
+        "properties": {
+          "package": { "type": "keyword" },
+          "module": { "type": "keyword" },
+          "function": { "type": "keyword" },
+          "full_name": { "type": "keyword" }
+        }
+      },
+
+      "objects": {
+        "type": "nested",
+        "properties": {
+          "object_id": { "type": "keyword" },
+          "type": { "type": "keyword" },
+          "owner": { "type": "keyword" }
+        }
+      },
+
+      "effects": {
+        "properties": {
+          "created_count": { "type": "integer" },
+          "mutated_count": { "type": "integer" },
+          "deleted_count": { "type": "integer" },
+          "balance_changes": {
+            "type": "nested",
+            "properties": {
+              "coin_type": { "type": "keyword" },
+              "amount": { "type": "long" },
+              "owner": { "type": "keyword" }
+            }
+          }
+        }
+      },
+
+      "events": {
+        "type": "nested",
+        "properties": {
+          "type": { "type": "keyword" },
+          "package": { "type": "keyword" },
+          "module": { "type": "keyword" },
+          "sender": { "type": "keyword" }
+        }
+      },
+
+      "_comment_flatten": "Flattened arrays for aggregation",
+      "packages": { "type": "keyword" },
+      "modules": { "type": "keyword" },
+      "functions": { "type": "keyword" },
+      "coin_types": { "type": "keyword" }
+    }
+  }
+}

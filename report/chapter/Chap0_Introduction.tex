@@ -1,0 +1,90 @@
+\clearpage
+\phantomsection
+
+\addcontentsline{toc}{chapter}{{Mở đầu}}
+\chapter*{Mở đầu}
+\noindent{\Large \textbf{Động lực và bối cảnh}}
+
+Tài chính phi tập trung (Decentralized Finance - DeFi) đã trở thành một trong những lĩnh vực phát triển nhanh nhất trong hệ sinh thái blockchain, với tổng giá trị bị khóa (Total Value Locked - TVL) đạt khoảng \$120-150 tỷ USD vào năm 2024-2025. DeFi mang lại nhiều cơ hội tài chính mới như cho vay phi tập trung, giao dịch tự động, yield farming, và nhiều dịch vụ tài chính truyền thống được số hóa trên blockchain.
+
+Tuy nhiên, sự phát triển nhanh chóng của DeFi đi kèm với những thách thức bảo mật nghiêm trọng. Theo báo cáo từ Halborn về 100 vụ hack DeFi hàng đầu năm 2025, tổn thất do các cuộc tấn công DeFi trong quý 1 năm 2025 đã lên tới $1,67 tỷ USD (≈70% so với tổng tổn thất của năm 2024)~\cite{halborn2025top100hacks}. Điều đáng lo ngại hơn là xu hướng tấn công đang thay đổi: các cuộc tấn công thông qua tài khoản bị chiếm quyền (Compromised Accounts) đã chiếm hơn 50% tổng số các cuộc tấn công, với tổn thất lên tới 55,6% tổng giá trị bị đánh cắp~\cite{halborn2025top100hacks}. Điều này cho thấy các vector tấn công không chỉ giới hạn ở việc khai thác lỗ hổng smart contract mà còn mở rộng sang các tấn công off-chain phức tạp hơn.
+
+Sui Blockchain, được phát triển bởi Mysten Labs, là một blockchain layer-1 mới với kiến trúc Object-Centric Model và ngôn ngữ lập trình Move, được thiết kế đặc biệt để hỗ trợ các ứng dụng DeFi hiệu suất cao. Với TVL trên Sui đạt \$951 triệu USD và đang tăng trưởng nhanh, Sui đang trở thành một nền tảng quan trọng cho hệ sinh thái DeFi. Tuy nhiên, các công cụ giám sát và phát hiện rủi ro hiện tại chưa được tối ưu hóa cho kiến trúc đặc biệt của Sui.
+
+\vspace{0.5cm}
+
+\noindent{\Large \textbf{Vấn đề và khoảng trống}}
+
+Các công cụ bảo mật DeFi hiện tại như Forta Network, CertiK, và Halborn chủ yếu tập trung vào giám sát ở mức từng protocol riêng lẻ. Điều này dẫn đến một số hạn chế quan trọng:
+
+\begin{itemize}
+	\item \textbf{Thiếu tầm nhìn toàn hệ sinh thái}: Các công cụ hiện tại khó phát hiện các cuộc tấn công phối hợp (coordinated attacks) xảy ra qua nhiều giao dịch và nhiều protocol khác nhau. Một kẻ tấn công có thể thực hiện flash loan từ protocol A, thao túng giá trên protocol B, và rút lợi nhuận từ protocol C, trong khi mỗi giao dịch riêng lẻ có vẻ hợp lệ.
+	
+	\item \textbf{Độ trễ cao}: Các giải pháp hiện có thường có độ trễ từ vài phút đến hàng giờ trong việc phát hiện và cảnh báo, trong khi các cuộc tấn công DeFi có thể hoàn thành trong vài giây hoặc vài phút.
+	
+	\item \textbf{Khó phát hiện tấn công off-chain}: Các tấn công thông qua compromised wallet (tài khoản bị chiếm quyền) rất khó phát hiện vì các giao dịch từ những tài khoản này về mặt kỹ thuật là hợp lệ, chỉ có hành vi của người dùng là bất thường. Việc phân tích hành vi người dùng đòi hỏi dữ liệu lịch sử và các kỹ thuật phân tích phức tạp.
+	
+	\item \textbf{Thiếu hệ thống đánh giá rủi ro đa tín hiệu}: Các công cụ hiện tại thường chỉ dựa vào một hoặc một vài tín hiệu để phát hiện tấn công, dẫn đến tỷ lệ false positive cao hoặc bỏ sót các cuộc tấn công tinh vi.
+\end{itemize}
+
+\vspace{0.5cm}
+
+\noindent{\Large \textbf{Mục tiêu đề tài}}
+
+Dự án này nhằm xây dựng một hệ thống giám sát và phát hiện rủi ro DeFi toàn diện trên blockchain Sui, với các mục tiêu cụ thể sau:
+
+\begin{enumerate}
+	\item \textbf{Xây dựng hệ thống giám sát gần thời gian thực}: Phát hiện các cuộc tấn công với độ trễ dưới 5 giây trên Kibana dashboard và 1-2 giây trên Custom Indexer, đảm bảo phản ứng kịp thời với các mối đe dọa.
+	
+	\item \textbf{Phát hiện đa chiều các vector tấn công}: Hệ thống có khả năng phát hiện nhiều loại tấn công khác nhau bao gồm:
+	\begin{itemize}
+		\item Flash Loan Attacks
+		\item Price Manipulation và Oracle Attacks
+		\item Sandwich Attacks và Front-running
+		\item Compromised Wallet và Behavioral Anomalies
+	\end{itemize}
+	
+	\item \textbf{Phân tích hành vi người dùng dựa trên dữ liệu lịch sử}: Sử dụng dữ liệu giao dịch lịch sử để thiết lập baseline hành vi bình thường của người dùng và phát hiện các bất thường, đặc biệt hữu ích cho việc phát hiện compromised accounts.
+	
+	\item \textbf{Tích hợp với hệ sinh thái Sui}: Tận dụng các đặc điểm kiến trúc của Sui như Object-Centric Model, TX-DAG, và Event-based Architecture để tối ưu hóa hiệu suất phát hiện.
+\end{enumerate}
+
+\vspace{0.5cm}
+
+\noindent{\Large \textbf{Đóng góp chính}}
+
+Dự án này có các đóng góp chính sau:
+
+\begin{enumerate}
+	\item \textbf{Kiến trúc hai lớp (Dual-Layer Detection Architecture)}: 
+	\begin{itemize}
+		\item \textbf{Lớp 1 - Realtime Detection}: Custom Indexer được viết bằng Rust, thực hiện phát hiện tấn công gần thời gian thực với độ trễ 1-2 giây. Lớp này bao gồm 4 analyzer chuyên biệt: Oracle Manipulation Analyzer, Flash Loan Analyzer, Sandwich Analyzer, và Price Analyzer.
+		\item \textbf{Lớp 2 - Historical Behavioral Analysis}: Sử dụng ELK Stack (Elasticsearch, Logstash, Kibana) để phân tích dữ liệu lịch sử, phát hiện các pattern phức tạp và behavioral anomalies với độ trễ dưới 5 giây.
+	\end{itemize}
+	
+	\item \textbf{Hệ thống đánh giá rủi ro đa tín hiệu (Multi-Signal Graduated Risk Scoring)}: Kết hợp nhiều tín hiệu từ các analyzer khác nhau để tính toán điểm rủi ro tổng hợp, giảm thiểu false positive và tăng độ chính xác phát hiện. Hệ thống phân loại rủi ro thành 4 mức: LOW (<30), MEDIUM (30-60), HIGH (60-80), và CRITICAL (>80).
+	
+	\item \textbf{Phân tích hành vi quy mô doanh nghiệp (Enterprise-Scale Behavioral Analysis)}: Tích hợp dữ liệu on-chain và off-chain để xây dựng profile hành vi của người dùng, phát hiện các bất thường dựa trên statistical analysis và machine learning techniques.
+	
+	\item \textbf{Chứng minh tính khả thi qua thực nghiệm}: Triển khai và kiểm thử hệ thống trên Sui Testnet với các kịch bản tấn công thực tế, đạt độ chính xác phát hiện 91\% với false positive rate 4,5\%.
+\end{enumerate}
+
+\vspace{0.5cm}
+
+\noindent{\Large \textbf{Cấu trúc dự án}}
+
+Nội dung chính của dự án được trình bày trong 6 chương:
+
+\begin{itemize}
+	\item \textbf{Chương 1 - Giới thiệu}: Trình bày động lực, bối cảnh, vấn đề nghiên cứu, mục tiêu, đóng góp và cấu trúc dự án.
+	
+	\item \textbf{Chương 2 - Cơ sở lý thuyết và công nghệ liên quan}: Giới thiệu các khái niệm cơ bản về blockchain và Sui, phân tích các loại tấn công DeFi, các công nghệ giám sát hiện tại, và khoảng trống nghiên cứu.
+	
+	\item \textbf{Chương 3 - Phương pháp và kiến trúc hệ thống}: Mô tả chi tiết kiến trúc hai lớp của hệ thống MDRDS, các analyzer và thuật toán phát hiện, hệ thống risk scoring, và quy trình phát hiện tấn công.
+	
+	\item \textbf{Chương 4 - Triển khai và Demo}: Trình bày chi tiết về công nghệ sử dụng, cấu trúc dự án, quá trình triển khai, và các kịch bản demo với kết quả thực nghiệm.
+	
+	\item \textbf{Chương 5 - Đánh giá và phân tích kết quả}: Phân tích chi tiết kết quả thực nghiệm, so sánh với các phương pháp khác, đánh giá hiệu suất hệ thống, và thảo luận về các trade-offs.
+	
+	\item \textbf{Chương 6 - Kết luận}: Tóm tắt các đóng góp, kết quả đạt được, giới hạn của đề tài, và hướng phát triển tương lai.
+\end{itemize}

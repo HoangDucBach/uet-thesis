@@ -1,0 +1,1 @@
+pub const SIMULATION_PACKAGE_ID: &str = "0x0a78ed73edcaca699f8ffead05a9626aadd6edb30d49523574c8016806b0530e";

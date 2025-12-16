@@ -1,0 +1,505 @@
+\clearpage
+\phantomsection
+
+\addcontentsline{toc}{chapter}{{PHỤ LỤC}}
+\chapter*{Phụ lục}
+\renewcommand{\thefigure}{A.\arabic{figure}} 
+\setcounter{figure}{0}
+
+\begin{enumerate}[A$).$]
+	\item \textbf{Cấu hình hệ thống chi tiết}
+	
+	\subsection*{A.1 Elasticsearch Mappings (JSON)}
+	
+	\textbf{Transaction Index Mapping}:
+	
+	\begin{verbatim}
+{
+  "mappings": {
+    "properties": {
+      "tx_hash": { "type": "keyword" },
+      "timestamp": { "type": "date" },
+      "from": { "type": "keyword" },
+      "to": { "type": "keyword" },
+      "amount": { "type": "double" },
+      "gas_price": { "type": "long" },
+      "events": { "type": "nested" },
+      "risk_score": { "type": "float" },
+      "protocol": { "type": "keyword" }
+    }
+  }
+}
+	\end{verbatim}
+	
+	\textbf{Event Index Mapping}:
+	
+	\begin{verbatim}
+{
+  "mappings": {
+    "properties": {
+      "event_type": { "type": "keyword" },
+      "contract_address": { "type": "keyword" },
+      "data": { "type": "object" },
+      "timestamp": { "type": "date" },
+      "tx_hash": { "type": "keyword" }
+    }
+  }
+}
+	\end{verbatim}
+	
+	\textbf{Alert Index Mapping}:
+	
+	\begin{verbatim}
+{
+  "mappings": {
+    "properties": {
+      "alert_id": { "type": "keyword" },
+      "timestamp": { "type": "date" },
+      "risk_score": { "type": "float" },
+      "attack_type": { "type": "keyword" },
+      "description": { "type": "text" },
+      "tx_hash": { "type": "keyword" }
+    }
+  }
+}
+	\end{verbatim}
+	
+	\subsection*{A.2 PostgreSQL Schema}
+	
+	\textbf{Flash Loans Table}:
+	
+	\begin{verbatim}
+CREATE TABLE flash_loans (
+    loan_id VARCHAR(64) PRIMARY KEY,
+    borrower VARCHAR(64) NOT NULL,
+    amount DECIMAL(20, 8) NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    repaid BOOLEAN DEFAULT FALSE,
+    repaid_timestamp TIMESTAMP,
+    profit DECIMAL(20, 8)
+);
+
+CREATE INDEX idx_flash_loans_borrower ON flash_loans(borrower);
+CREATE INDEX idx_flash_loans_timestamp ON flash_loans(timestamp);
+	\end{verbatim}
+	
+	\textbf{Risk Scores Table}:
+	
+	\begin{verbatim}
+CREATE TABLE risk_scores (
+    id SERIAL PRIMARY KEY,
+    tx_hash VARCHAR(64) NOT NULL,
+    risk_score FLOAT NOT NULL,
+    risk_level VARCHAR(20) NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    analyzer_signals JSONB
+);
+
+CREATE INDEX idx_risk_scores_tx_hash ON risk_scores(tx_hash);
+CREATE INDEX idx_risk_scores_timestamp ON risk_scores(timestamp);
+	\end{verbatim}
+	
+	\textbf{Alerts Table}:
+	
+	\begin{verbatim}
+CREATE TABLE alerts (
+    alert_id SERIAL PRIMARY KEY,
+    tx_hash VARCHAR(64),
+    attack_type VARCHAR(50) NOT NULL,
+    risk_score FLOAT NOT NULL,
+    description TEXT,
+    timestamp TIMESTAMP NOT NULL,
+    resolved BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX idx_alerts_timestamp ON alerts(timestamp);
+CREATE INDEX idx_alerts_attack_type ON alerts(attack_type);
+	\end{verbatim}
+	
+	\subsection*{A.3 Kibana Dashboard JSON}
+	
+	Dashboard configurations được export từ Kibana và lưu trong file \texttt{dashboards/overview.json}.
+	
+	\newpage
+	
+	\item \textbf{Move Smart Contract Code}
+	
+	\subsection*{B.1 DeFi Test Protocol}
+	
+	\textbf{Pool Contract} (trích đoạn):
+	
+	\begin{verbatim}
+module defi_protocol::pool {
+    use sui::coin::{Coin, Self};
+    use sui::event;
+    
+    struct Pool has key {
+        id: UID,
+        coin_a: Balance<COIN_A>,
+        coin_b: Balance<COIN_B>,
+        k: u64, // constant product
+    }
+    
+    public fun swap(
+        pool: &mut Pool,
+        coin_in: Coin<COIN_A>,
+        min_amount_out: u64
+    ): Coin<COIN_B> {
+        // Swap logic
+        let amount_out = calculate_amount_out(coin_in.value(), pool);
+        assert!(amount_out >= min_amount_out, E_INSUFFICIENT_OUTPUT);
+        
+        event::emit(SwapExecuted {
+            amount_in: coin_in.value(),
+            amount_out,
+        });
+        
+        // Return swapped coin
+    }
+}
+	\end{verbatim}
+	
+	\textbf{Event Definitions}:
+	
+	\begin{verbatim}
+struct SwapExecuted has copy, drop {
+    amount_in: u64,
+    amount_out: u64,
+    pool_id: ID,
+}
+
+struct FlashLoanBorrowed has copy, drop {
+    loan_id: u64,
+    borrower: address,
+    amount: u64,
+}
+
+struct FlashLoanRepaid has copy, drop {
+    loan_id: u64,
+    amount: u64,
+    fee: u64,
+}
+	\end{verbatim}
+	
+	\newpage
+	
+	\item \textbf{Pseudocode và Algorithms}
+	
+	\subsection*{C.1 Flash Loan Detection Algorithm}
+	
+	\begin{algorithmic}
+\State \textbf{require:} transaction\_sequence
+\State \textbf{ensure:} is\_flash\_loan, risk\_score
+
+\State loans = find\_loan\_calls(tx\_seq)
+\For{each loan in loans}
+	\State repayments = find\_repay\_calls(tx\_seq, loan\_id)
+	\If{repayments.same\_block}
+		\State profit = calculate\_profit(tx\_seq)
+		\State risk\_score = calculate\_risk(profit, loan\_amount)
+		\State \textbf{return} (TRUE, risk\_score)
+	\EndIf
+\EndFor
+\State \textbf{return} (FALSE, 0)
+	\end{algorithmic}
+	
+	\subsection*{C.2 Sandwich Detection Algorithm}
+	
+	\begin{algorithmic}
+\State \textbf{require:} mempool\_transactions
+\State \textbf{ensure:} sandwich\_detected, affected\_tx, mev\_amount
+
+\For{each victim\_tx in mempool}
+	\State front\_runner = find\_high\_gas\_tx\_before(victim\_tx)
+	\State back\_runner = find\_high\_gas\_tx\_after(victim\_tx)
+	\If{front\_runner AND back\_runner}
+		\If{same\_sender(front\_runner, back\_runner)}
+			\State mev = calculate\_profit\_spread()
+			\State \textbf{return} (TRUE, victim\_tx, mev)
+		\EndIf
+	\EndIf
+\EndFor
+\State \textbf{return} (FALSE, NULL, 0)
+	\end{algorithmic}
+	
+	\subsection*{C.3 Risk Scoring Formula}
+	
+	\begin{equation}
+	\text{risk\_score} = \frac{\sum_{i=1}^{n} w_i \times \text{signal}_i}{\sum_{i=1}^{n} w_i}
+	\end{equation}
+	
+	Trong đó:
+	\begin{itemize}
+		\item $w_{\text{oracle}} = 0.3$
+		\item $w_{\text{flashloan}} = 0.35$
+		\item $w_{\text{sandwich}} = 0.2$
+		\item $w_{\text{price}} = 0.15$
+		\item $\text{signal}_i \in [0, 100]$
+	\end{itemize}
+	
+	\subsection*{C.4 Behavioral Anomaly Detection}
+	
+	\begin{algorithmic}
+\State \textbf{require:} historical\_data, current\_user\_activity
+\State \textbf{ensure:} anomaly\_detected, anomaly\_score
+
+\State baseline = calculate\_baseline(historical\_data, window=30days)
+\State current = current\_user\_activity
+
+\State z\_score = (current - baseline.mean) / baseline.stdev
+
+\If{z\_score > 3.0}
+	\State anomaly\_score = min(100, z\_score * 10)
+	\State \textbf{return} (TRUE, anomaly\_score)
+\Else
+	\State \textbf{return} (FALSE, 0)
+\EndIf
+	\end{algorithmic}
+	
+	\newpage
+	
+	\item \textbf{Elasticsearch Queries}
+	
+	\subsection*{D.1 Flash Loan Detection Query}
+	
+	\begin{verbatim}
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match_phrase": { "event_type": "FlashLoan" } },
+        { "range": { "timestamp": { "gte": "now-1h" } } }
+      ]
+    }
+  },
+  "aggs": {
+    "flash_loans_by_pool": {
+      "terms": { "field": "pool_id" }
+    }
+  }
+}
+	\end{verbatim}
+	
+	\subsection*{D.2 Money Laundering Pattern Query}
+	
+	\begin{verbatim}
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "from": "suspicious_address" } }
+      ]
+    }
+  },
+  "aggs": {
+    "transaction_chain": {
+      "terms": {
+        "field": "to",
+        "size": 100
+      },
+      "aggs": {
+        "sub_chain": {
+          "terms": {
+            "field": "to",
+            "size": 10
+          }
+        }
+      }
+    }
+  }
+}
+	\end{verbatim}
+	
+	\subsection*{D.3 Wash Trading Pattern Query}
+	
+	\begin{verbatim}
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "match": { "from": "address_A" } },
+        { "match": { "to": "address_B" } }
+      ],
+      "must_not": [
+        { "exists": { "field": "reverse_transaction" } }
+      ]
+    }
+  }
+}
+	\end{verbatim}
+	
+	\newpage
+	
+	\item \textbf{Setup và Installation Guide}
+	
+	\subsection*{E.1 Prerequisites}
+	
+	\begin{itemize}
+		\item \textbf{OS}: Ubuntu 22.04 LTS hoặc macOS 12+
+		\item \textbf{Hardware}: 
+			\begin{itemize}
+				\item RAM: 8GB+ (16GB khuyến nghị)
+				\item CPU: 4+ cores
+				\item Disk: 100GB+ free space
+			\end{itemize}
+		\item \textbf{Software Dependencies}:
+			\begin{itemize}
+				\item Rust 1.75.0+
+				\item Docker và Docker Compose
+				\item PostgreSQL 15+
+				\item Node.js 18+ (cho một số tools)
+			\end{itemize}
+	\end{itemize}
+	
+	\subsection*{E.2 Step-by-step Installation}
+	
+	\textbf{Bước 1}: Cài đặt Rust
+	
+	\begin{verbatim}
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+rustc --version
+	\end{verbatim}
+	
+	\textbf{Bước 2}: Cài đặt Docker
+	
+	\begin{verbatim}
+sudo apt-get update
+sudo apt-get install docker.io docker-compose
+sudo systemctl start docker
+sudo systemctl enable docker
+	\end{verbatim}
+	
+	\textbf{Bước 3}: Cài đặt PostgreSQL
+	
+	\begin{verbatim}
+sudo apt-get install postgresql postgresql-contrib
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+	\end{verbatim}
+	
+	\textbf{Bước 4}: Clone repository
+	
+	\begin{verbatim}
+git clone https://github.com/your-username/mdrds-system.git
+cd mdrds-system
+	\end{verbatim}
+	
+	\textbf{Bước 5}: Khởi động ELK Stack
+	
+	\begin{verbatim}
+cd elk-config
+docker-compose up -d
+# Đợi 1-2 phút để services khởi động
+docker-compose ps
+	\end{verbatim}
+	
+	\textbf{Bước 6}: Cấu hình PostgreSQL
+	
+	\begin{verbatim}
+sudo -u postgres psql
+CREATE DATABASE mdrds;
+CREATE USER mdrds_user WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE mdrds TO mdrds_user;
+\q
+	\end{verbatim}
+	
+	\textbf{Bước 7}: Build và chạy Indexer
+	
+	\begin{verbatim}
+cd indexer
+cargo build --release
+cp config.toml.example config.toml
+# Chỉnh sửa config.toml với thông tin của bạn
+./target/release/mdrds-indexer --config config.toml
+	\end{verbatim}
+	
+	\subsection*{E.3 Configuration Files}
+	
+	\textbf{config.toml} (ví dụ):
+	
+	\begin{verbatim}
+[sui]
+rpc_url = "https://fullnode.testnet.sui.io:443"
+ws_url = "wss://fullnode.testnet.sui.io:443"
+
+[database]
+host = "localhost"
+port = 5432
+database = "mdrds"
+user = "mdrds_user"
+password = "your_password"
+
+[elasticsearch]
+url = "http://localhost:9200"
+index_prefix = "mdrds"
+
+[analyzer]
+flash_loan_profit_threshold = 10000
+oracle_price_deviation_threshold = 0.1
+sandwich_mev_threshold = 1000
+price_impact_threshold = 0.05
+
+[risk_scoring]
+alert_threshold = 60
+critical_threshold = 80
+	\end{verbatim}
+	
+	\newpage
+	
+	\item \textbf{Dữ liệu thực nghiệm}
+	
+	\subsection*{F.1 Raw Metrics và Performance Data}
+	
+	Các file CSV chứa dữ liệu thực nghiệm:
+	\begin{itemize}
+		\item \texttt{detection\_results.csv}: Kết quả phát hiện cho từng test case
+		\item \texttt{system\_performance.csv}: Metrics về hiệu suất hệ thống theo thời gian
+	\end{itemize}
+	
+	\subsection*{F.2 Statistical Analysis}
+	
+	\begin{itemize}
+		\item Mean, standard deviation, percentiles cho các metrics
+		\item Distribution plots
+		\item Correlation analysis giữa các signals
+	\end{itemize}
+	
+	\subsection*{F.3 Comparison Tables}
+	
+	So sánh MDRDS với:
+	\begin{itemize}
+		\item Single-layer approach
+		\item Forta Network
+		\item CertiK Monitoring
+	\end{itemize}
+	
+	\newpage
+	
+	\item \textbf{Demo Recordings và Screenshots}
+	
+	\subsection*{G.1 Video Demo Links}
+	
+	\begin{itemize}
+		\item YouTube/GitHub links đến video demo
+		\item Duration: 10-15 minutes
+		\item Contains all 4 attack scenarios
+	\end{itemize}
+	
+	\subsection*{G.2 Full Screenshot Collections}
+	
+	\begin{itemize}
+		\item Dashboard screenshots (10+)
+		\item Log screenshots (5+)
+		\item Query results (5+)
+	\end{itemize}
+	
+	\subsection*{G.3 Attack Simulation Logs}
+	
+	\begin{itemize}
+		\item Full console logs từ indexer
+		\item Timestamped events
+		\item Risk score progressions
+	\end{itemize}
+	
+\end{enumerate}

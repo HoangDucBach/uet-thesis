@@ -1,0 +1,375 @@
+\clearpage
+\phantomsection
+
+\setcounter{chapter}{1}
+\chapter[{CƠ SỞ LÝ THUYẾT VÀ CÔNG NGHỆ LIÊN QUAN}]{Cơ sở lý thuyết và công nghệ liên quan}
+
+Chương này trình bày các khái niệm cơ bản về blockchain và Sui, phân tích chi tiết các loại tấn công DeFi, các công nghệ giám sát hiện tại, và khoảng trống nghiên cứu trong lĩnh vực bảo mật DeFi.
+
+\section{Khái niệm cơ bản về Blockchain và Sui}
+
+\subsection{Blockchain, Smart Contracts, Transactions và Events}
+
+\textbf{Blockchain} là một cấu trúc dữ liệu phân tán, trong đó các giao dịch được nhóm thành các khối (blocks) và liên kết với nhau theo thứ tự thời gian tạo thành một chuỗi (chain). Mỗi khối chứa hash của khối trước đó, đảm bảo tính toàn vẹn và không thể thay đổi dữ liệu đã được ghi nhận.
+
+\textbf{Smart Contracts} là các chương trình tự động thực thi các điều khoản đã được định nghĩa trước, chạy trên blockchain. Khác với hợp đồng truyền thống, smart contracts không cần bên thứ ba để thực thi và đảm bảo tính minh bạch, không thể thay đổi.
+
+\textbf{Transactions} là các thao tác thay đổi trạng thái của blockchain, bao gồm chuyển token, gọi hàm smart contract, hoặc tạo object mới. Mỗi transaction được ký bởi private key của người gửi và được xác minh bởi các node trong mạng.
+
+\textbf{Events} là các log được emit từ smart contracts để ghi lại các sự kiện quan trọng. Events không thay đổi trạng thái blockchain nhưng cung cấp thông tin về các hoạt động đã xảy ra, rất hữu ích cho việc theo dõi và phân tích.
+
+\subsection{Move Language và Object-Centric Model trên Sui}
+
+Sui sử dụng ngôn ngữ lập trình \textbf{Move}, được thiết kế đặc biệt cho blockchain với focus vào tính bảo mật và khả năng xác minh. Move có hệ thống type system mạnh mẽ, ngăn chặn nhiều lỗ hổng phổ biến như reentrancy, integer overflow, và unauthorized access.
+
+\textbf{Object-Centric Model} là một trong những đặc điểm nổi bật của Sui, khác biệt so với Account-based model của Ethereum. Trong Sui:
+
+\begin{itemize}
+	\item \textbf{Objects} là đơn vị cơ bản của trạng thái, mỗi object có một ID duy nhất và thuộc về một địa chỉ cụ thể.
+	\item Objects có thể được chia sẻ (shared) hoặc sở hữu (owned), cho phép linh hoạt hơn trong việc quản lý tài sản.
+	\item Object ownership model giúp dễ dàng theo dõi luồng tài sản và phát hiện các giao dịch bất thường.
+	\item So với Account-based model, Object-Centric Model cung cấp khả năng phân tích tốt hơn vì mỗi asset là một object riêng biệt có thể được theo dõi độc lập.
+\end{itemize}
+
+Ví dụ, trong một giao dịch swap trên DEX, thay vì chỉ cập nhật balance của hai tài khoản như Ethereum, Sui sẽ tạo và hủy các objects cụ thể, cho phép theo dõi chi tiết hơn về luồng tài sản.
+
+\subsection{TX-DAG (Transaction Directed Acyclic Graph) trên Sui}
+
+Sui sử dụng \textbf{TX-DAG} (Transaction Directed Acyclic Graph) thay vì blockchain tuyến tính truyền thống. Trong TX-DAG:
+
+\begin{itemize}
+	\item Mỗi transaction là một node trong đồ thị.
+	\item Các transaction phụ thuộc vào nhau được kết nối bằng các cạnh có hướng.
+	\item Đồ thị không có chu trình (acyclic), đảm bảo tính nhất quán.
+	\item Cho phép xử lý song song các transaction độc lập, tăng thông lượng đáng kể.
+\end{itemize}
+
+Ưu điểm của TX-DAG cho phân tích transaction dependencies:
+
+\begin{itemize}
+	\item \textbf{Theo dõi luồng tài sản}: Dễ dàng truy vết các object qua nhiều transaction.
+	\item \textbf{Phát hiện tấn công phối hợp}: Có thể xác định các transaction có liên quan trong một cuộc tấn công phức tạp.
+	\item \textbf{Phân tích causality}: Hiểu rõ mối quan hệ nhân quả giữa các transaction.
+\end{itemize}
+
+\subsection{Event-based Architecture trên Sui}
+
+Sui có hệ thống event mạnh mẽ cho phép theo dõi các hoạt động trên blockchain:
+
+\begin{itemize}
+	\item \textbf{Event Emission}: Smart contracts có thể emit events với các thông tin tùy chỉnh.
+	\item \textbf{Event Subscription}: Các ứng dụng có thể subscribe để nhận events theo thời gian thực.
+	\item \textbf{Event Querying}: Có thể query events từ Sui Fullnode dựa trên các tiêu chí như event type, sender, object ID, hoặc time range.
+\end{itemize}
+
+Cách lấy events từ Sui Fullnode:
+
+\begin{itemize}
+	\item Sử dụng Sui RPC API với method \texttt{sui\_subscribeEvent} để subscribe events theo thời gian thực.
+	\item Sử dụng method \texttt{sui\_getEvents} để query events từ lịch sử.
+	\item Events được lưu trữ trong Sui Fullnode và có thể được index bởi các indexer tùy chỉnh.
+\end{itemize}
+
+\section{Phân tích các loại tấn công DeFi}
+
+DeFi đối mặt với nhiều loại tấn công khác nhau, từ các exploit trực tiếp trên smart contract đến các tấn công off-chain phức tạp. Bảng \ref{tab:attack_types} phân loại các loại tấn công chính.
+
+\begin{table}[!h]
+	\centering
+\caption{Phân loại các loại tấn công DeFi}
+\resizebox{1\hsize}{!} {
+\begin{tabular}{|l|l|l|l|l|}
+\hline
+\rowcolor[rgb]{1,0.925,0.918}
+\textbf{Loại Tấn Công} & \textbf{Phân loại} & \textbf{Đặc điểm} & \textbf{Ví dụ} & \textbf{Tỷ lệ (2024-2025)} \\
+\hline
+Flash Loan Attack & On-chain & Vay tạm thời không cần collateral & dYdX exploits & 83.3\% (2024) \\
+\hline
+Price Manipulation & On-chain & Thay đổi giá oracle & Curve exploit & 32.1\% (2021) \\
+\hline
+Sandwich / Front-running & On-chain & Xen vào giữa tx & MEV attacks & Phổ biến \\
+\hline
+Governance Attack & On-chain & Chiếm quyền vote & DAO hacks & 5.6\% (2024) \\
+\hline
+Compromised Account & Off-chain & Tài khoản bị lộ private key & 55.6\% losses (2025) & >50\% attacks \\
+\hline
+Rug Pull / Scam & Both & Team rút sạch liquidity & Fake tokens & 15\% (2024) \\
+\hline
+\end{tabular}
+}
+\label{tab:attack_types}
+\end{table}
+
+\subsection{Flash Loan Attacks}
+
+\textbf{Định nghĩa và cơ chế}: Flash Loan cho phép người dùng vay một lượng lớn tài sản mà không cần collateral, với điều kiện phải trả lại trong cùng một transaction. Kẻ tấn công có thể:
+
+\begin{enumerate}
+	\item Vay một lượng lớn token từ một protocol (ví dụ: \$50 triệu USDC).
+	\item Sử dụng số token này để thao túng giá trên một DEX hoặc protocol khác.
+	\item Kiếm lợi nhuận từ sự chênh lệch giá.
+	\item Trả lại khoản vay cùng với phí trong cùng transaction.
+	\item Giữ lại phần lợi nhuận.
+\end{enumerate}
+
+\textbf{Ví dụ thực tế}:
+
+\begin{itemize}
+	\item \textbf{bNUSD Exploit (2024)}: Kẻ tấn công sử dụng flash loan \$10 triệu để thao túng giá oracle của bNUSD, sau đó vay thêm và rút lợi nhuận \$1.2 triệu.
+	\item \textbf{Panoptic Exploit}: Sử dụng flash loan để manipulate price của options protocol, kiếm lợi nhuận từ sự chênh lệch.
+\end{itemize}
+
+\textbf{Khó khăn trong phát hiện}:
+
+\begin{itemize}
+	\item Flash loan là tính năng hợp pháp của DeFi, không phải là exploit.
+	\item Cần phân biệt giữa việc sử dụng flash loan hợp pháp và malicious.
+	\item Pattern: Loan → Exploit → Repay thường xảy ra trong cùng một block, khó phát hiện nếu không có stateful tracking.
+\end{itemize}
+
+\subsection{Price Manipulation và Oracle Attacks}
+
+\textbf{Oracle Manipulation}: Oracles là các dịch vụ cung cấp dữ liệu giá từ thị trường bên ngoài vào blockchain. Kẻ tấn công có thể:
+
+\begin{itemize}
+	\item Thực hiện một giao dịch lớn trên một DEX nhỏ để thay đổi giá spot.
+	\item Oracle lấy giá từ DEX này và cập nhật giá cho protocol lending/borrowing.
+	\item Giá bị manipulate cho phép kẻ tấn công vay hoặc liquidate với giá không chính xác.
+\end{itemize}
+
+\textbf{Price Impact Attacks}: Khi một giao dịch lớn được thực hiện, nó có thể tạo ra price impact đáng kể, đặc biệt trên các pool có liquidity thấp. Kẻ tấn công có thể:
+
+\begin{itemize}
+	\item Thực hiện swap lớn để tăng giá token A.
+	\item Sử dụng giá cao này để vay thêm token B.
+	\item Swap ngược lại để giảm giá token A.
+	\item Rút lợi nhuận từ sự chênh lệch.
+\end{itemize}
+
+\textbf{TWAP Deviation}: Time-Weighted Average Price (TWAP) là một cơ chế để giảm thiểu manipulation bằng cách lấy trung bình giá theo thời gian. Tuy nhiên, nếu deviation giữa TWAP và spot price quá lớn, có thể là dấu hiệu của manipulation.
+
+\subsection{Sandwich Attacks và Front-running}
+
+\textbf{MEV (Maximal Extractable Value)}: MEV là giá trị có thể được trích xuất từ việc sắp xếp lại, bao gồm, hoặc loại trừ các transaction trong một block. Front-running và sandwich attacks là các hình thức khai thác MEV phổ biến.
+
+\textbf{Pattern Front-run → Victim → Back-run}:
+
+\begin{enumerate}
+	\item \textbf{Front-run}: Kẻ tấn công thấy một transaction lớn sắp được thực hiện (ví dụ: swap 1000 ETH → USDC) trong mempool.
+	\item Kẻ tấn công gửi transaction với gas price cao hơn để được xử lý trước.
+	\item Transaction của kẻ tấn công mua ETH trước, làm tăng giá.
+	\item \textbf{Victim transaction} được thực hiện với giá cao hơn dự kiến.
+	\item \textbf{Back-run}: Kẻ tấn công bán ETH ngay sau đó với giá cao, kiếm lợi nhuận từ spread.
+\end{enumerate}
+
+\textbf{Phát hiện}: Cần theo dõi sequence của transactions trong cùng một block, đặc biệt là các transaction có cùng sender và gas price cao.
+
+\subsection{Compromised Wallet (Off-chain)}
+
+\textbf{Khi private key bị lộ}: Khi private key của một tài khoản bị lộ (do phishing, malware, hoặc lỗi bảo mật), kẻ tấn công có thể:
+
+\begin{itemize}
+	\item Truy cập vào tài khoản và thực hiện các giao dịch hợp pháp về mặt kỹ thuật.
+	\item Rút tất cả tài sản từ tài khoản.
+	\item Chuyển tài sản qua nhiều địa chỉ để làm rối tung dấu vết.
+\end{itemize}
+
+\textbf{Thách thức}: Giao dịch hợp lệ nhưng ác ý - các giao dịch này không vi phạm bất kỳ quy tắc nào của smart contract, chỉ có hành vi của người dùng là bất thường.
+
+\textbf{Lý do chiếm >50\% tấn công}: 
+
+\begin{itemize}
+	\item Dễ thực hiện hơn so với exploit smart contract.
+	\item Không cần kiến thức kỹ thuật sâu về blockchain.
+	\item Có thể tấn công nhiều tài khoản cùng lúc nếu có danh sách private keys.
+	\item Khó phát hiện nếu không có behavioral analysis.
+\end{itemize}
+
+\subsection{Rug Pull và Scam Tokens}
+
+\textbf{Rug Pull}: Khi team phát triển một dự án DeFi rút toàn bộ liquidity pool và biến mất, để lại các nhà đầu tư với tokens vô giá trị.
+
+\textbf{Scam Tokens}: Các token được tạo ra với mục đích lừa đảo, thường có:
+
+\begin{itemize}
+	\item Contract code không được audit.
+	\item Liquidity bị khóa trong thời gian ngắn hoặc không khóa.
+	\item Team anonymous hoặc không có danh tiếng.
+	\item Marketing quá mức nhưng không có sản phẩm thực tế.
+\end{itemize}
+
+\section{Công nghệ giám sát và phân tích hiện nay}
+
+\subsection{Các công cụ bảo mật DeFi hiện tại}
+
+\textbf{Forta Network}: Một mạng lưới phân tán các detection bots để phát hiện các mối đe dọa trên blockchain. Forta cho phép:
+
+\begin{itemize}
+	\item Các nhà phát triển tạo và deploy detection bots.
+	\item Subscribe vào các alerts từ bots khác.
+	\item Tích hợp với các protocol để tự động phản ứng.
+\end{itemize}
+
+\textbf{Giới hạn}: 
+\begin{itemize}
+	\item Chủ yếu tập trung vào Ethereum.
+	\item Độ trễ có thể cao do kiến trúc phân tán.
+	\item Khó phát hiện các tấn công phối hợp phức tạp.
+\end{itemize}
+
+\textbf{CertiK}: Cung cấp dịch vụ audit smart contract và giám sát bảo mật. CertiK có:
+
+\begin{itemize}
+	\item Automated security scanning.
+	\item Formal verification.
+	\item Real-time monitoring.
+\end{itemize}
+
+\textbf{Giới hạn}:
+\begin{itemize}
+	\item Tập trung vào contract-level security.
+	\item Không có behavioral analysis sâu.
+	\item Chi phí cao cho các protocol nhỏ.
+\end{itemize}
+
+\textbf{Halborn}: Cung cấp dịch vụ bảo mật blockchain và DeFi, bao gồm:
+
+\begin{itemize}
+	\item Smart contract auditing.
+	\item Penetration testing.
+	\item Security monitoring.
+\end{itemize}
+
+\textbf{Giới hạn}:
+\begin{itemize}
+	\item Chủ yếu là dịch vụ tư vấn, không phải công cụ tự động.
+	\item Không có giải pháp real-time monitoring công khai.
+\end{itemize}
+
+\subsection{Elastic Stack (ELK) trong giám sát}
+
+\textbf{Elasticsearch}: Là một search và analytics engine phân tán, mạnh mẽ:
+
+\begin{itemize}
+	\item \textbf{Indexing}: Lưu trữ và index dữ liệu với khả năng tìm kiếm nhanh.
+	\item \textbf{Aggregations}: Hỗ trợ các phép tính thống kê phức tạp như mean, std deviation, percentiles.
+	\item \textbf{Query DSL}: Ngôn ngữ truy vấn mạnh mẽ cho phép tìm kiếm và phân tích dữ liệu phức tạp.
+	\item \textbf{Scalability}: Có thể scale horizontal để xử lý lượng dữ liệu lớn.
+\end{itemize}
+
+\textbf{Kibana}: Là công cụ visualization và dashboarding:
+
+\begin{itemize}
+	\item \textbf{Dashboards}: Tạo các dashboard tùy chỉnh để hiển thị dữ liệu real-time.
+	\item \textbf{Lens}: Công cụ drag-and-drop để tạo visualizations nhanh chóng.
+	\item \textbf{TSVB}: Time Series Visual Builder cho phân tích time-series.
+	\item \textbf{Alerting}: Tích hợp hệ thống cảnh báo khi có sự kiện bất thường.
+\end{itemize}
+
+\textbf{Use cases trong bảo mật}:
+
+\begin{itemize}
+	\item Log analysis và security monitoring.
+	\item Phát hiện anomalies trong user behavior.
+	\item Real-time alerting khi có suspicious activities.
+	\item Forensic analysis sau khi có sự cố.
+\end{itemize}
+
+\textbf{Ưu điểm}: Scalable, real-time, DSL query mạnh mẽ, dễ tích hợp với các hệ thống khác.
+
+\subsection{Custom Indexers và Real-time Detection}
+
+\textbf{Cách hoạt động}:
+
+\begin{itemize}
+	\item Custom Indexer kết nối trực tiếp với blockchain node (Sui Fullnode).
+	\item Subscribe vào events và transactions theo thời gian thực.
+	\item Parse và transform dữ liệu theo format phù hợp.
+	\item Lưu trữ vào database (PostgreSQL) để tracking state.
+	\item Thực hiện các phép phân tích real-time.
+	\item Gửi alerts khi phát hiện rủi ro.
+\end{itemize}
+
+\textbf{Stateful Detection}: Khác với stateless detection chỉ xem xét từng transaction riêng lẻ, stateful detection:
+
+\begin{itemize}
+	\item Lưu trữ state của các objects và transactions.
+	\item Theo dõi các pattern xuyên suốt nhiều transactions.
+	\item Phát hiện các cuộc tấn công phối hợp phức tạp.
+	\item Ví dụ: Theo dõi flash loan từ khi borrow đến khi repay.
+\end{itemize}
+
+\subsection{Behavioral Analysis trong bảo mật}
+
+\textbf{Baseline Establishment}: Thiết lập hành vi bình thường của một tài khoản:
+
+\begin{itemize}
+	\item Thu thập dữ liệu lịch sử giao dịch (ví dụ: 30 ngày).
+	\item Tính toán các metrics: số giao dịch/ngày, giá trị trung bình, địa chỉ thường xuyên tương tác.
+	\item Xây dựng statistical model: mean, standard deviation, percentiles.
+\end{itemize}
+
+\textbf{Anomaly Detection}: Phát hiện các hành vi bất thường:
+
+\begin{itemize}
+	\item So sánh hành vi hiện tại với baseline.
+	\item Sử dụng statistical methods: z-score, percentile ranking.
+	\item Machine learning: Isolation Forest, DBSCAN, Autoencoders.
+\end{itemize}
+
+\textbf{User Profiling}: Xây dựng profile cho từng người dùng:
+
+\begin{itemize}
+	\item Phân loại người dùng: trader, holder, liquidity provider.
+	\item Theo dõi risk tolerance và trading patterns.
+	\item Phát hiện khi profile thay đổi đột ngột (có thể do compromised).
+\end{itemize}
+
+\section{Các công nghệ liên quan trên Sui}
+
+\subsection{Sui Fullnode và Event Streaming}
+
+Sui Fullnode cung cấp:
+
+\begin{itemize}
+	\item \textbf{RPC API}: RESTful API để query dữ liệu từ blockchain.
+	\item \textbf{WebSocket}: Real-time streaming của transactions và events.
+	\item \textbf{Event Subscription}: Subscribe vào các loại events cụ thể.
+	\item \textbf{Transaction Query}: Query transactions theo nhiều tiêu chí.
+\end{itemize}
+
+\subsection{Move Contract Analysis}
+
+Phân tích Move contracts để:
+
+\begin{itemize}
+	\item Hiểu logic của protocol.
+	\item Xác định các điểm có thể bị khai thác.
+	\item Theo dõi các function calls và state changes.
+\end{itemize}
+
+\subsection{On-chain Data Indexing và RPC}
+
+\begin{itemize}
+	\item \textbf{Indexing}: Tạo index cho các dữ liệu quan trọng để query nhanh.
+	\item \textbf{RPC Optimization}: Tối ưu hóa RPC calls để giảm latency.
+	\item \textbf{Caching}: Cache các dữ liệu thường xuyên được query.
+\end{itemize}
+
+\section{Khoảng trống nghiên cứu (Research Gap)}
+
+Sau khi phân tích các công nghệ và công cụ hiện có, có thể xác định các khoảng trống nghiên cứu sau:
+
+\begin{enumerate}
+	\item \textbf{Không có hệ thống giám sát toàn diện trên Sui}: Các công cụ hiện tại chủ yếu tập trung vào Ethereum, chưa có giải pháp tối ưu cho kiến trúc đặc biệt của Sui (Object-Centric, TX-DAG).
+	
+	\item \textbf{Khó kết hợp real-time detection + historical analysis}: Các giải pháp hiện tại thường chỉ tập trung vào một trong hai, chưa có kiến trúc tích hợp hiệu quả.
+	
+	\item \textbf{Thiếu phương pháp phát hiện tấn công phối hợp}: Các cuộc tấn công phức tạp qua nhiều protocol và nhiều transactions khó được phát hiện bởi các công cụ hiện tại.
+	
+	\item \textbf{Behavioral analysis chưa được áp dụng rộng rãi}: Mặc dù có tiềm năng lớn trong việc phát hiện compromised accounts, behavioral analysis chưa được tích hợp vào các hệ thống giám sát DeFi.
+	
+	\item \textbf{Thiếu hệ thống risk scoring đa tín hiệu}: Các công cụ hiện tại thường chỉ dựa vào một vài tín hiệu, dẫn đến false positive cao hoặc bỏ sót các cuộc tấn công.
+\end{enumerate}
+
+Dự án này nhằm lấp đầy các khoảng trống trên bằng cách xây dựng hệ thống MDRDS với kiến trúc hai lớp, tích hợp real-time detection và historical behavioral analysis, tối ưu hóa cho Sui blockchain.

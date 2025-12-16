@@ -1,0 +1,154 @@
+\clearpage
+\phantomsection
+
+\setcounter{chapter}{3}
+\chapter[{TRIỂN KHAI VÀ DEMO}]{Triển khai và Demo}
+
+Chương này trình bày chi tiết về quá trình triển khai hệ thống MDRDS, bao gồm công nghệ sử dụng, cấu trúc dự án, chi tiết triển khai, và các kịch bản demo với kết quả thực nghiệm.
+
+\section{Công nghệ và công cụ sử dụng}
+
+Hệ thống được xây dựng trên Sui Testnet với các thành phần chính:
+
+\begin{itemize}
+	\item \textbf{Custom Indexer}: Xử lý real-time detection, kết nối trực tiếp với Sui Fullnode để theo dõi transactions và events.
+	\item \textbf{PostgreSQL}: Lưu trữ state tracking cho flash loans, risk scores, và alerts.
+	\item \textbf{ELK Stack}: Elasticsearch cho indexing và storage, Kibana cho visualization và monitoring.
+	\item \textbf{Test DeFi Protocols}: Các smart contracts test trên Sui để demo các kịch bản tấn công.
+\end{itemize} 
+
+\section{Cấu trúc dự án}
+
+Cấu trúc thư mục của dự án MDRDS:
+
+\begin{verbatim}
+mdrds-system/
+|-- indexer/          # Custom Indexer
+|   |-- src/
+|   |   |-- main.rs
+|   |   |-- indexer.rs
+|   |   |-- analyzer/
+|   |   |   |-- mod.rs
+|   |   |   |-- oracle.rs
+|   |   |   |-- flashloan.rs
+|   |   |   |-- sandwich.rs
+|   |   |   |-- price.rs
+|   |   |   |-- common.rs
+|   |   |-- risk_scorer.rs
+|   |   |-- db.rs
+|   |-- Cargo.toml
+|   |-- config.toml
+|-- contracts/        # Move Contracts
+|   |-- sources/
+|   |   |-- defi_protocol.move
+|   |   |-- token.move
+|   |   |-- pool.move
+|   |-- Move.toml
+|-- elk-config/       # Elasticsearch Setup
+|   |-- elasticsearch.yml
+|   |-- kibana.yml
+|   |-- docker-compose.yml
+|   |-- index-templates/
+|-- dashboards/       # Kibana
+|   |-- overview.json
+|   |-- detections.json
+|   |-- queries/
+|-- docs/
+    |-- setup.md
+    |-- demo.md
+\end{verbatim}
+
+\section{Chi tiết triển khai}
+
+Hệ thống được triển khai với các thành phần chính:
+
+\begin{itemize}
+	\item \textbf{Custom Indexer}: Kết nối với Sui Fullnode, subscribe events theo thời gian thực, parse và lưu vào PostgreSQL để tracking state.
+	\item \textbf{4 Analyzers}: Xử lý song song để phát hiện các loại tấn công khác nhau (chi tiết logic trong Chương 2).
+	\item \textbf{Risk Scorer}: Tổng hợp signals từ các analyzer với trọng số để tính risk score tổng.
+	\item \textbf{ELK Stack}: Index dữ liệu vào Elasticsearch, hiển thị trên Kibana dashboard.
+\end{itemize} 
+
+Các thresholds và parameters có thể điều chỉnh trong file cấu hình để tối ưu cho từng use case.
+
+\section{DEMO ỨNG DỤNG}
+
+\subsection{Hướng dẫn chạy hệ thống}
+
+Quy trình triển khai hệ thống bao gồm:
+
+\begin{enumerate}
+	\item Cài đặt các dependencies cần thiết (database, search engine, etc.)
+	\item Cấu hình kết nối với Sui Fullnode
+	\item Khởi động ELK Stack
+	\item Build và chạy Custom Indexer
+	\item Deploy test DeFi protocols trên Sui Testnet
+	\item Truy cập Kibana dashboard để xem kết quả
+\end{enumerate}
+
+Chi tiết cài đặt và cấu hình được mô tả trong Phụ lục E.
+
+\subsection{Giao diện chính}
+
+Kibana dashboard cung cấp các view chính:
+
+\begin{itemize}
+	\item \textbf{Overview Dashboard}: Real-time transaction count, risk score distribution, alert timeline
+	\item \textbf{Transaction Monitor}: Danh sách transactions với risk scores, filter và sort theo các tiêu chí
+	\item \textbf{Risk Scoring Dashboard}: Time series trends, distribution charts, top risky protocols
+\end{itemize} 
+
+Các screenshots và visualizations sẽ được bổ sung sau khi có dữ liệu thực tế.
+
+\subsection{Các kịch bản tấn công được demo}
+
+Hệ thống được test với 4 kịch bản tấn công chính:
+
+\subsubsection{KỊCH BẢN 1: Flash Loan Attack}
+
+Kẻ tấn công vay flash loan lớn, sử dụng để manipulate giá trên DEX, kiếm lợi nhuận và trả lại loan trong cùng transaction.
+
+\textbf{Kết quả}: Flash Loan Analyzer phát hiện pattern borrow → exploit → repay, risk score tăng lên CRITICAL.
+
+\subsubsection{KỊCH BẢN 2: Price Manipulation via Oracle}
+
+Kẻ tấn công thực hiện giao dịch lớn để thay đổi giá spot, oracle lấy giá này và trigger liquidation không chính xác.
+
+\textbf{Kết quả}: Oracle Analyzer phát hiện price deviation lớn và Health Factor drop, risk score HIGH.
+
+\subsubsection{KỊCH BẢN 3: Sandwich Attack}
+
+Kẻ tấn công front-run và back-run một transaction của người dùng để extract MEV.
+
+\textbf{Kết quả}: Sandwich Analyzer phát hiện pattern front-run → victim → back-run, risk score HIGH.
+
+\subsubsection{KỊCH BẢN 4: Compromised Account}
+
+Tài khoản bị chiếm quyền có hành vi bất thường so với baseline lịch sử.
+
+\textbf{Kết quả}: Behavioral analysis phát hiện anomaly >3$\sigma$, risk score MEDIUM-HIGH.
+
+Các screenshots, logs, và metrics chi tiết sẽ được bổ sung sau khi có dữ liệu thực tế từ test cases.
+
+\subsection{Kết quả và Hiệu suất}
+
+Kết quả thực nghiệm sẽ được trình bày chi tiết trong Chương 4, bao gồm:
+
+\begin{itemize}
+	\item Detection performance cho từng loại tấn công
+	\item System performance metrics (throughput, latency, resource usage)
+	\item So sánh với các phương pháp khác
+\end{itemize}
+
+\subsection{Truy vết và Root Cause Analysis}
+
+Khi phát hiện một cuộc tấn công, hệ thống cho phép truy vết toàn bộ transaction chain để phân tích root cause:
+
+\begin{itemize}
+	\item Query tất cả transactions liên quan đến địa chỉ nghi ngờ
+	\item Track asset flows qua các protocols
+	\item Xác định điểm bắt đầu và kết thúc của cuộc tấn công
+	\item Phân tích correlation giữa các events
+\end{itemize}
+
+Các visualization và reports chi tiết sẽ được bổ sung sau khi có dữ liệu thực tế.
